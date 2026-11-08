@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "status": "design_only_not_loaded_by_prototype",
+  "dataset_id": "definir-conjunto-privado",
+  "labels_version": "definir-etiquetas",
+  "text": {"model": "usar-modelo-local-verificado", "prompt_version": "1"},
+  "audio": {"adapter": "por-integrar", "model_revision": null},
+  "vision": {"adapter": "por-integrar", "model_revision": null},
+  "max_heavy_jobs": 1
+}

@@ -1,3 +1,44 @@
 # Semáforos Cali
 
-Prototipo de IA multimodal para reportes ciudadanos. Arquitectura y diccionario aprobados el 8 de noviembre de 2026. Código, documentación y pruebas en preparación; el sistema integral todavía no está desplegado.
+IA multimodal para conservar, interpretar y consultar reportes ciudadanos de semáforos en Cali. Proyecto de Esteban Oliveros Montoya, Maestría en IA Aplicada, Icesi.
+
+## Estado real
+
+- 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
+- `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
+- Audio e imagen todavía no se interpretan automáticamente en este prototipo.
+- La aplicación integrada, PostgreSQL, mapa, PDF, correo e integración operativa con n8n están pendientes. Este repositorio no despliega automáticamente al VPS.
+
+## Documentación vigente
+
+- [Diccionario y seis decisiones aprobadas](docs/diccionario.md)
+- [Arquitectura modular y extensibilidad](docs/arquitectura.md)
+- [Experimentos y comparación](docs/experimentos.md)
+- [Estado y plan de implementación](docs/estado.md)
+- [Operación y despliegue](docs/operacion.md)
+- [Historial de cambios](CHANGELOG.md)
+
+## Pruebas locales
+
+Requisitos: Python 3.11 o 3.12 y FFmpeg/ffprobe en PATH.
+
+```bash
+python -m unittest discover -s tests -v
+python -m unittest discover -s prototype/v0_3 -p 'test_*.py' -v
+```
+
+Las pruebas del prototipo generan archivos sintéticos temporales. No necesitan ZIP ciudadanos, acceso al VPS ni modelos descargados. La inferencia real se evaluará aparte con datos privados y etiquetas humanas.
+
+## Comparar experimentos
+
+```bash
+python tools/compare_runs.py runs/base.json runs/candidato.json --output runs/comparacion.md
+```
+
+El comparador exige el mismo conjunto de datos y la misma versión de etiquetas. Muestra métricas y diferencias; no inventa una calificación global. Formato y ejemplo: [experimentos](docs/experimentos.md).
+
+## Evolución
+
+Cada cambio debe incluir código, pruebas pertinentes y actualización de documentación. Modelos, prompts y parámetros se versionarán por configuración. Una configuración propuesta no cambia el prototipo hasta conectar su lector. El despliegue integral se entregará en un paquete reproducible después de las pruebas y comprobación de compatibilidad con el VPS.
+
+El repositorio contiene código y ejemplos sintéticos. Originales ciudadanos, contactos, modelos binarios, salidas privadas y secretos se conservan fuera de Git.
