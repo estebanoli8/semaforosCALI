@@ -4,13 +4,15 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 
 ## Estado real
 
+- Nuevo núcleo privado `semaforos/`: PostgreSQL, cola, adaptadores audio/visión/texto, etiquetas y métricas. [Implementación y límites](docs/nucleo_multimodal.md). Inferencia real y despliegue pendientes.
+
 - Ingesta continua: más de 100 carpetas disponibles según el usuario, con cargas diarias variables. No hay tamaño fijo de lote.
 - `prototype/v0_4/` añade carga por bloques y validación independiente; probada localmente, sin despliegue. [Alcance y límites](prototype/v0_4/LEEME.md).
 
 - 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
 - `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
 - Audio e imagen todavía no se interpretan automáticamente en este prototipo.
-- La aplicación integrada, PostgreSQL, mapa, PDF, correo e integración operativa con n8n están pendientes. Este repositorio no despliega automáticamente al VPS.
+- La conexión del núcleo a la carga web, mapa, PDF, correo e integración operativa n8n está pendiente. Este repositorio no despliega automáticamente al VPS.
 
 ## Documentación vigente
 

@@ -14,8 +14,9 @@ Actualización: más de 100 carpetas disponibles según el usuario; las 36 inici
 | Código v0.3 de preparación audiovisual | Disponible y probado localmente; despliegue VPS no confirmado |
 | Reglas y diccionario | Aprobados |
 | Repositorio, documentación y comparador local | Incluidos en esta entrega |
-| Whisper, detector/lectura de luces integrados | Pendiente |
-| PostgreSQL e integración operativa n8n | Pendiente |
+| Whisper, detector/lectura de luces | Adaptadores implementados en núcleo privado; inferencia real pendiente |
+| PostgreSQL | Esquema, cola y revisión implementados; validación CI y VPS por registrar |
+| Integración operativa n8n | Pendiente |
 | Panel completo de experimentos, mapa, PDF y correo | Pendiente |
 | Instalador integral | Pendiente de construcción y verificación de infraestructura |
 

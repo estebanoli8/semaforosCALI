@@ -1,0 +1,4 @@
+-r requirements-core.txt
+faster-whisper==1.2.1
+huggingface-hub==0.34.4
+ultralytics==8.3.225

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "audio": {
+    "repository": "Systran/faster-whisper-small",
+    "revision": "main",
+    "language": "es",
+    "compute_type": "int8",
+    "cpu_threads": 2,
+    "beam_size": 5,
+    "vad_filter": true
+  },
+  "detect": {
+    "weights": "/models/yolo11n.pt",
+    "expected_sha256": null,
+    "image_size": 960,
+    "confidence": 0.25,
+    "iou": 0.5,
+    "max_detections": 50,
+    "cpu_threads": 2
+  },
+  "lights": {
+    "model": "qwen3-vl:2b",
+    "expected_digest": null,
+    "min_crop_side": 16,
+    "context": 4096,
+    "max_tokens": 200,
+    "threads": 2
+  },
+  "text": {
+    "model": "qwen3:4b-instruct",
+    "expected_digest": null,
+    "context": 4096,
+    "max_tokens": 1200,
+    "threads": 4
+  },
+  "video": {"max_duration_seconds": 600},
+  "timeout_seconds": 3600,
+  "max_attempts": 2
+}

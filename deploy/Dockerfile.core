@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libglib2.0-0 libgl1 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements-core.txt requirements-models.txt ./
+RUN pip install --no-cache-dir torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements-models.txt
+COPY semaforos/ ./semaforos/
+COPY config/modelos.json ./config/modelos.json
+COPY prototype/v0_3/video.py ./prototype/v0_3/video.py
+ENV PYTHONUNBUFFERED=1 SC_STORAGE=/data/core SC_MODELS_DIR=/models
+EXPOSE 8000
+CMD ["uvicorn", "semaforos.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

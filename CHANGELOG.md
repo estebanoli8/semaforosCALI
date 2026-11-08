@@ -15,3 +15,10 @@
 - Carga por bloques, verificación SHA-256, reanudación y validación asíncrona.
 - Protección de espacio disponible y cancelación explícita de cargas incompletas.
 - 11 pruebas locales (incluyen 125 cargas sintéticas); no desplegado en VPS.
+
+## 2026-11-08 — núcleo privado v0.5
+
+- PostgreSQL, cola con lease y una inferencia pesada a la vez.
+- Adaptadores Whisper, YOLO, Qwen-VL y Qwen textual; resultados con procedencia.
+- Etiquetas humanas y métricas por ejecución; conservación de predicciones.
+- API privada y empaquetado candidato; no desplegado ni evaluado con modelos reales.

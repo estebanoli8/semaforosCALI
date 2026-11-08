@@ -21,3 +21,30 @@ jobs:
         run: python -m unittest discover -s prototype/v0_3 -p 'test_*.py' -v
       - name: Carga continua y recuperación
         run: python -m unittest discover -s prototype/v0_4 -p 'test_*.py' -v
+  core:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: semaforos_test
+          POSTGRES_USER: semaforos_test
+          POSTGRES_PASSWORD: synthetic-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U semaforos_test -d semaforos_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SC_TEST_DSN: postgresql://semaforos_test:synthetic-ci-password@localhost:5432/semaforos_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencias del núcleo
+        run: pip install -r requirements-core.txt httpx==0.28.1
+      - name: Contratos, PostgreSQL, cola y revisión
+        run: python -m unittest discover -s tests/core -v
