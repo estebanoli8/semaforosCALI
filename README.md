@@ -4,6 +4,9 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 
 ## Estado real
 
+- Ingesta continua: más de 100 carpetas disponibles según el usuario, con cargas diarias variables. No hay tamaño fijo de lote.
+- `prototype/v0_4/` añade carga por bloques y validación independiente; probada localmente, sin despliegue. [Alcance y límites](prototype/v0_4/LEEME.md).
+
 - 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
 - `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
 - Audio e imagen todavía no se interpretan automáticamente en este prototipo.

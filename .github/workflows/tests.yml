@@ -19,3 +19,5 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Prototipo audiovisual
         run: python -m unittest discover -s prototype/v0_3 -p 'test_*.py' -v
+      - name: Carga continua y recuperación
+        run: python -m unittest discover -s prototype/v0_4 -p 'test_*.py' -v

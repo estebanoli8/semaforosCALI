@@ -53,3 +53,9 @@ Un adaptador recibe IDs/localizadores autorizados, configuración validada y con
 Rama de cambio → pruebas automáticas → experimento privado con versión fija de datos → comparación con baseline → revisión → versión instalable → comprobación en VPS. Volver a una imagen anterior no revierte por sí solo una migración de datos: registrar compatibilidad y procedimiento de restauración.
 
 La entrega inicial del repositorio preserva el prototipo como referencia funcional. Los módulos de esta arquitectura se implementarán gradualmente; la estructura descrita no implica que ya estén ejecutándose.
+
+## Ingesta continua (actualización 2026-11-08)
+
+La cantidad diaria y el tamaño de ZIP son variables; no codificar límites de 36 o 100 conversaciones. Recepción por bloques y validación posterior, antes de encolar inferencia. Mantener contadores separados de cargas, conversaciones y reportes. Comprobar espacio en disco y conservar reservas para los demás servicios. Una cola vacía sigue disponible para nuevas llegadas.
+
+v0.4 implementa estas funciones en el prototipo SQLite de una réplica. La aplicación integrada deberá trasladar los estados a su persistencia PostgreSQL y probar concurrencia antes de aumentar réplicas. El máximo operativo depende de disco, memoria, tamaño descomprimido y recursos medidos.

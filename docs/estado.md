@@ -6,6 +6,8 @@ El usuario aprobó las seis decisiones, el diccionario completo y los seis indic
 
 ## Avance
 
+Actualización: más de 100 carpetas disponibles según el usuario; las 36 iniciales son referencia exploratoria, no el total ni el límite. v0.4 incorpora carga reanudable y validación independiente; 11 pruebas locales, incluyendo 125 cargas sintéticas. Sin despliegue VPS.
+
 | Elemento | Estado |
 |---|---|
 | Lote textual de 36 conversaciones / 39 fragmentos | Completado según usuario; calidad pendiente |
