@@ -1,5 +1,12 @@
 # Historial
 
+## 2026-11-08 — v0.8 consolidación asistida
+
+- Afirmaciones verificadas contra texto fuente, reutilizadas entre ejecuciones compatibles con referencias a cada predicción.
+- Reportes privados con ocho variables, fuente principal, revisión y capturas versionadas.
+- Panel para agrupar, complementar, reemplazar, revisar y descartar, con peticiones idempotentes y control de concurrencia.
+- Pruebas de PostgreSQL y recorrido del panel en Chromium con datos sintéticos. No acredita evaluación real ni despliegue.
+
 ## 2026-11-08 — v0.7 mensajes fuente
 
 - Parser iOS/Android, fechas UTC con supuestos explícitos, cuerpo y cabecera literal.

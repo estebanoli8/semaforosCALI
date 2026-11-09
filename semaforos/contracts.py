@@ -36,6 +36,7 @@ def assertions(data, sources):
     """Una cita debe ser substring de una fuente existente; la interpretación se separa."""
     if not isinstance(data,dict) or not isinstance(data.get('assertions'),list):raise ValueError('invalid_assertions')
     for item in data['assertions']:
+        if not isinstance(item,dict):raise ValueError('invalid_assertion_item')
         if item.get('variable') not in ('ubicacion','descripcion_dano','tiempo_sin_funcionar','afectaciones'):
             raise ValueError('invalid_variable')
         if item.get('source_id') not in sources:raise ValueError('unknown_source')

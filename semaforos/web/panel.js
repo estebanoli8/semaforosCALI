@@ -39,6 +39,7 @@ async function refresh(){
   }
   if(!jobs.items.length)row($('jobsRows'),['Sin tareas en esta página.','','','','']);
   $('stageStats').replaceChildren();
+  if(summary.finding_index_errors){const warning=document.createElement('span');warning.textContent=summary.finding_index_errors+' salidas de texto requieren revisar su indexación; no equivalen a cero hallazgos.';$('stageStats').append(warning);}
   for(const item of summary.tasks){const s=document.createElement('span');s.textContent=stages[item.stage]+' · '+states[item.state]+': '+item.n;$('stageStats').append(s);}
   for(const [name,offset,total] of [['Uploads',uploadOffset,uploadTotal],['Jobs',jobOffset,jobTotal]]){
     $('previous'+name).disabled=offset===0;$('next'+name).disabled=offset+pageSize>=total;
@@ -53,7 +54,7 @@ async function candidates(){
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 function log(message){const li=document.createElement('li');li.textContent=message;$('uploadLog').append(li);}
 $('loginForm').onsubmit=async event=>{event.preventDefault();token=$('token').value;try{await refresh();$('token').value='';$('login').hidden=true;$('workspace').hidden=false;notice('');clearInterval(timer);timer=setInterval(()=>refresh().catch(e=>notice(e.message)),5000);}catch(e){token='';notice('No se pudo entrar: '+e.message);}};
-$('logout').onclick=()=>{pause=true;token='';clearInterval(timer);$('workspace').hidden=true;$('login').hidden=false;$('result').textContent='';notice('Sesión cerrada. Las tareas ya en cola continúan en el servidor.');};
+$('logout').onclick=()=>{document.dispatchEvent(new Event('sc:logout'));pause=true;token='';clearInterval(timer);$('workspace').hidden=true;$('login').hidden=false;$('result').textContent='';notice('Sesión cerrada. Las tareas ya en cola continúan en el servidor.');};
 $('pause').onclick=()=>{pause=true;$('uploadStatus').textContent='Pausando al terminar el bloque actual…';};
 $('closeResult').onclick=()=>{$('resultBox').hidden=true;};
 $('upload').onclick=async()=>{

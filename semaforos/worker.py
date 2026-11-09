@@ -61,6 +61,8 @@ def once(store, root, runner=None):
             from .uploads import Uploads
             imported=Uploads(store,root).process_one_locked()
             expand(store,root)
+            from .findings import index_pending
+            index_pending(store)
             job=store.claim(c)
             if not job:return imported
             try:
@@ -69,6 +71,7 @@ def once(store, root, runner=None):
             except Exception as exc:
                 store.fail(c,job,type(exc).__name__)
             expand(store,root)
+            index_pending(store)
             return True
         finally:
             c.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,));c.commit()

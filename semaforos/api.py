@@ -2,6 +2,7 @@
 import hmac
 import os
 from uuid import UUID
+from typing import Literal
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
@@ -13,6 +14,19 @@ from .store import Store
 from .files import contained
 from .messages import chat_sources
 from .evaluation import wer, detection_metrics, light_metrics
+from .reports import ReportError, change as change_report, detail as report_detail
+
+
+class ReportChange(BaseModel):
+    request_id: UUID
+    action: Literal['create','attach','replace','review']
+    finding_ids: list[UUID] = Field(default_factory=list,max_length=200)
+    primary_finding_id: UUID | None = None
+    expected_version: int | None = Field(default=None,ge=1)
+    summary: str | None = Field(default=None,max_length=4000)
+    reviewer: str = Field(min_length=1,max_length=100)
+    reason: str = Field(min_length=1,max_length=2000)
+    revision: Literal['pendiente','revisado','descartado'] | None = None
 
 
 class UploadStart(BaseModel):
@@ -115,6 +129,69 @@ def create_app(store=None, root=None, config=None, token=None):
     async def upload_error(request,exc):
         return JSONResponse(status_code=409,content={'detail':str(exc)})
 
+    @app.exception_handler(ReportError)
+    async def report_error(request,exc):
+        return JSONResponse(status_code=409,content={'detail':str(exc)})
+
+    @private.get('/conversations')
+    def conversations(offset:int=0,limit:int=50):
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        with store.connect() as c:
+            rows=c.execute('SELECT id,original_name,created_at FROM conversations ORDER BY created_at DESC,id LIMIT %s OFFSET %s',(limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM conversations').fetchone()['n']
+        return {'items':rows,'total':total}
+
+    @private.get('/findings')
+    def findings(conversation_id:UUID,offset:int=0,limit:int=50,unassigned:bool=False):
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        predicate='f.conversation_id=%s'
+        if unassigned:predicate+=" AND NOT EXISTS(SELECT 1 FROM report_findings rf JOIN reports r ON r.id=rf.report_id WHERE rf.finding_id=f.id AND r.revision<>'descartado')"
+        with store.connect() as c:
+            rows=c.execute('SELECT f.*,ARRAY(SELECT r.code FROM reports r JOIN report_findings rf ON rf.report_id=r.id WHERE rf.finding_id=f.id AND r.revision<>\'descartado\' ORDER BY r.code) AS report_codes FROM findings f WHERE '+predicate+' ORDER BY f.created_at,f.id LIMIT %s OFFSET %s',(conversation_id,limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM findings f WHERE '+predicate,(conversation_id,)).fetchone()['n']
+        return {'items':rows,'total':total}
+
+    @private.get('/reports')
+    def reports(conversation_id:UUID|None=None,offset:int=0,limit:int=50):
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        clause=' WHERE r.conversation_id=%s' if conversation_id else ''
+        params=[conversation_id] if conversation_id else []
+        with store.connect() as c:
+            rows=c.execute('SELECT r.*,f.sent_at AS report_date FROM reports r JOIN findings f ON f.id=r.primary_finding_id'+clause+' ORDER BY r.created_at DESC,r.id LIMIT %s OFFSET %s',params+[limit,offset]).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM reports r'+clause,params).fetchone()['n']
+            active=c.execute("SELECT count(*) AS n FROM reports r"+clause+(' AND ' if clause else ' WHERE ')+"r.revision<>'descartado'",params).fetchone()['n']
+        return {'items':rows,'total':total,'active':active}
+
+    @private.get('/reports/{ident}')
+    def report(ident:UUID):
+        with store.connect() as c:return report_detail(c,ident)
+
+    @private.get('/reports/{ident}/history')
+    def report_history(ident:UUID,offset:int=0,limit:int=20):
+        if offset<0 or not 1<=limit<=100:raise HTTPException(400,'Paginación inválida')
+        with store.connect() as c:
+            rows=c.execute('SELECT version,action,reviewer,reason,snapshot,created_at FROM report_events WHERE report_id=%s ORDER BY version DESC LIMIT %s OFFSET %s',(ident,limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM report_events WHERE report_id=%s',(ident,)).fetchone()['n']
+        return {'items':rows,'total':total}
+
+    @private.post('/reports')
+    def create_report(body:ReportChange):
+        if body.action!='create':raise HTTPException(400,'Se requiere create')
+        return change_report(store,body.model_dump(mode='json',exclude_unset=True))
+
+    @private.post('/reports/{ident}/changes')
+    def edit_report(ident:UUID,body:ReportChange):
+        if body.action=='create':raise HTTPException(400,'Usa /reports para crear')
+        return change_report(store,body.model_dump(mode='json',exclude_unset=True),ident)
+
+    @private.get('/evidence/{ident}/download')
+    def download_evidence(ident:UUID):
+        with store.connect() as c:row=c.execute('SELECT storage_path,original_name FROM evidence WHERE id=%s',(ident,)).fetchone()
+        if not row:raise HTTPException(404,'Evidencia no encontrada')
+        path=contained(root,row['storage_path'])
+        if not path.is_file():raise HTTPException(404,'Archivo no disponible')
+        return FileResponse(path,filename=Path(row['original_name']).name,media_type='application/octet-stream')
+
     @app.middleware('http')
     async def private_headers(request,call_next):
         response=await call_next(request)
@@ -131,6 +208,8 @@ def create_app(store=None, root=None, config=None, token=None):
     def panel_js():return FileResponse(Path(__file__).with_name('web')/'panel.js',media_type='text/javascript')
     @app.get('/panel.css')
     def panel_css():return FileResponse(Path(__file__).with_name('web')/'panel.css',media_type='text/css')
+    @app.get('/review.js')
+    def review_js():return FileResponse(Path(__file__).with_name('web')/'review.js',media_type='text/javascript')
 
     @private.get('/summary')
     def summary():
@@ -139,8 +218,9 @@ def create_app(store=None, root=None, config=None, token=None):
             conversations=c.execute('SELECT count(*) AS n FROM conversations').fetchone()['n']
             evidence=c.execute('SELECT count(*) AS n FROM evidence WHERE parent_id IS NULL').fetchone()['n']
             states=c.execute('SELECT stage,state,count(*) AS n FROM jobs GROUP BY stage,state ORDER BY stage,state').fetchall()
+            index_errors=c.execute("SELECT count(*) AS n FROM finding_indexes WHERE state='error'").fetchone()['n']
         return {'conversations':conversations,'original_files':evidence,'tasks':states,
-                'disk_free_bytes':shutil.disk_usage(root).free,'disk_reserve_bytes':uploads.reserve,'chunk_bytes':CHUNK_BYTES}
+                'disk_free_bytes':shutil.disk_usage(root).free,'disk_reserve_bytes':uploads.reserve,'chunk_bytes':CHUNK_BYTES,'finding_index_errors':index_errors}
 
     @private.post('/uploads')
     def start_upload(body:UploadStart):

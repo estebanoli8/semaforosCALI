@@ -19,6 +19,7 @@ Actualización: más de 100 carpetas disponibles según el usuario; las 36 inici
 | Carga web conectada al núcleo | Implementada en v0.6; pruebas de recuperación y protección de datos en CI |
 | Mensajes fuente y fechas WhatsApp | v0.7: parser versionado, texto literal, fechas con supuestos y enlaces explícitos a adjuntos; pendiente validación con exportaciones reales |
 | Integración operativa n8n | Pendiente |
+| Consolidación y revisión | v0.8: afirmaciones por fuente, agrupación asistida, ocho listas, historial y control de edición; agrupación automática y reconciliación entre exportaciones pendientes |
 | Panel completo de experimentos, mapa, PDF y correo | Pendiente |
 | Instalador integral | Pendiente de construcción y verificación de infraestructura |
 

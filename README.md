@@ -4,6 +4,8 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 
 ## Estado real
 
+- Consolidación asistida y revisión privada: ocho variables por fuente, historial, complementos, descarte y protección contra duplicados. [Uso y límites](docs/reportes_revision.md).
+
 - Mensajes WhatsApp versionados: fechas, remitentes privados, texto literal y referencias a archivos. [Trazabilidad y supuestos](docs/mensajes_whatsapp.md).
 
 - Panel privado integrado: cargas reanudables → PostgreSQL → trabajador multimodal. [Carga web y recuperación](docs/carga_web.md).
@@ -15,7 +17,7 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 - 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
 - `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
 - Audio e imagen todavía no se interpretan automáticamente en este prototipo.
-- La carga web ya está conectada al núcleo. Consolidación de reportes, mapa, PDF, correo e integración operativa n8n siguen pendientes. Este repositorio no despliega automáticamente al VPS.
+- La carga web ya está conectada al núcleo. Consolidación automática entre versiones, mapa, PDF, correo e integración operativa n8n siguen pendientes. Este repositorio no despliega automáticamente al VPS.
 
 ## Documentación vigente
 
