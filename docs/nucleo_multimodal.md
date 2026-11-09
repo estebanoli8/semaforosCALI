@@ -1,4 +1,4 @@
-# Núcleo multimodal v0.5 — implementación y límites
+# Núcleo multimodal v0.6 — implementación y límites
 
 Fecha: 2026-11-08. Código en `semaforos/`. Es una etapa de integración privada: todavía no sustituye el portal existente ni es el instalador completo.
 
@@ -12,6 +12,8 @@ Fecha: 2026-11-08. Código en `semaforos/`. Es una etapa de integración privada
 - Videos: reutiliza el muestreo ya probado, extrae audio y cuadros con referencias al video, y encola audio/foto mediante los mismos adaptadores. Máximo inicial 600 s configurable; nunca recorta un video largo silenciosamente.
 - MLOps: configuración, versión del código, huellas de entrada, identidad real del modelo, prompts, tiempos y consumo del proceso. Salidas e intentos anteriores permanecen. Un ID de experimento nuevo permite comparar otra ejecución; repetir una solicitud idéntica dentro del mismo experimento no crea otro trabajo.
 - API privada para consultar trabajos/ejecuciones, pedir reprocesamiento y guardar etiquetas. WER, detecciones a IoU 0.5 y cobertura/acierto de luces calculados sobre etiquetas aportadas. Sin etiquetas no se inventan métricas de calidad.
+
+La carga web reanudable y el seguimiento privado están descritos en [carga_web.md](carga_web.md). La importación se ejecuta en el trabajador, fuera de la petición HTTP y antes de la siguiente inferencia.
 
 ## Modelos y configuración
 
@@ -30,7 +32,7 @@ Qwen3-VL es candidato inicial para luces, no un clasificador validado para los c
 
 ## API privada
 
-Autenticación: `Authorization: Bearer <SC_API_TOKEN>`, mínimo 32 caracteres. No publicar el token ni incluirlo en GitHub. Todas las rutas requieren autenticación; no es aún la proyección pública.
+Autenticación: `Authorization: Bearer <SC_API_TOKEN>`, mínimo 32 caracteres. No publicar el token ni incluirlo en GitHub. Todas las rutas de datos y acciones requieren autenticación. Solo la carcasa estática de acceso (/, /panel.js, /panel.css) es pública y no contiene datos; no es aún la proyección ciudadana.
 
 | Ruta | Operación |
 |---|---|
@@ -59,7 +61,7 @@ Estos son comandos del entorno de desarrollo; todavía no son instrucciones para
 
 ## Lo que falta
 
-Conectar carga web v0.4 con esta ingesta y evitar dos colas contradictorias; migrar resultados históricos sin enviar correos; completar parser/fechas y consolidación de mensajes, versiones y reportes; ejecutar modelos con archivos reales; panel de evaluación, mapa, PDF, correo y flujo n8n. Las afirmaciones extraídas por fragmentos son candidatos privados y no se cuentan como reportes ciudadanos finales. El particionado literal conserva caracteres pero puede separar contexto; su consolidación es una etapa pendiente.
+La carga web del núcleo ya usa PostgreSQL y no activa la cola SQLite del prototipo v0.4. Falta migrar resultados históricos sin enviar correos; completar parser/fechas y consolidación de mensajes, versiones y reportes; ejecutar modelos con archivos reales; panel de evaluación, mapa, PDF, correo y flujo n8n. Las afirmaciones extraídas por fragmentos son candidatos privados y no se cuentan como reportes ciudadanos finales. El particionado literal conserva caracteres pero puede separar contexto; su consolidación es una etapa pendiente.
 
 Las pruebas automáticas de contrato y PostgreSQL usan predicciones sintéticas para verificar persistencia, recuperación y etiquetado. No acreditan calidad de Whisper, YOLO ni Qwen.
 

@@ -15,7 +15,8 @@ Actualización: más de 100 carpetas disponibles según el usuario; las 36 inici
 | Reglas y diccionario | Aprobados |
 | Repositorio, documentación y comparador local | Incluidos en esta entrega |
 | Whisper, detector/lectura de luces | Adaptadores implementados en núcleo privado; inferencia real pendiente |
-| PostgreSQL | Esquema, cola y revisión implementados; validación CI y VPS por registrar |
+| PostgreSQL | Esquema, cola y revisión implementados; validación PostgreSQL v0.5 aprobada en CI; VPS pendiente |
+| Carga web conectada al núcleo | Implementada en v0.6; pruebas de recuperación y protección de datos en CI |
 | Integración operativa n8n | Pendiente |
 | Panel completo de experimentos, mapa, PDF y correo | Pendiente |
 | Instalador integral | Pendiente de construcción y verificación de infraestructura |

@@ -22,3 +22,12 @@
 - Adaptadores Whisper, YOLO, Qwen-VL y Qwen textual; resultados con procedencia.
 - Etiquetas humanas y métricas por ejecución; conservación de predicciones.
 - API privada y empaquetado candidato; no desplegado ni evaluado con modelos reales.
+
+## 2026-11-08 — núcleo privado v0.6
+
+- Carga web por bloques integrada con PostgreSQL; ninguna cola SQLite nueva.
+- Migración 002 independiente, configuración de cada carga congelada y recuperación de importaciones interrumpidas.
+- Panel privado con espacio libre, paginación, cancelación, reintentos y consulta de salidas; clave solo en memoria de pestaña.
+- Importación y modelos comparten bloqueo de trabajador; CLI respeta ese bloqueo.
+- Pruebas de carga HTTP → ZIP → tareas → predicción sintética, duplicados, reserva de disco y recuperación.
+- Inferencia real, publicación ciudadana y despliegue en VPS siguen pendientes.

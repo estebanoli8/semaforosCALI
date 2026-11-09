@@ -58,9 +58,11 @@ def once(store, root, runner=None):
             c.commit();return False
         c.commit()
         try:
+            from .uploads import Uploads
+            imported=Uploads(store,root).process_one_locked()
             expand(store,root)
             job=store.claim(c)
-            if not job:return False
+            if not job:return imported
             try:
                 output=(runner or execute_child)(store,c,job,root)
                 store.complete(c,job,output)

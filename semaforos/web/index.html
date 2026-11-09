@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semáforos Cali · Procesamiento</title><link rel="stylesheet" href="/panel.css"><script defer src="/panel.js"></script></head>
+<body><header><span class="mark" aria-hidden="true">● ● ●</span><span>SEMÁFOROS CALI</span><span class="private">Acceso privado</span></header>
+<main><div class="heading"><p class="eyebrow">DEL MENSAJE A LA EVIDENCIA</p><h1>Las voces de la ciudad,<br>en un mismo lugar.</h1>
+<p class="lead">Carga conversaciones y sigue su procesamiento. Los originales se conservan; las interpretaciones quedan pendientes de revisión.</p></div>
+<section id="login"><h2>Entrar al procesamiento</h2><form id="loginForm"><label for="token">Clave de acceso del equipo</label><div class="inline"><input id="token" type="password" autocomplete="off" required minlength="32"><button type="submit">Entrar</button></div></form><p class="muted">La clave se mantiene en esta pestaña. Al recargar tendrás que ingresarla de nuevo.</p></section>
+<p id="notice" role="status" aria-live="polite"></p>
+<div id="workspace" hidden>
+<div class="toolbar"><p id="updated" class="muted"></p><button id="logout" class="secondary">Salir</button></div>
+<div class="stats"><article><span>Conversaciones registradas</span><strong id="conversations">—</strong></article><article><span>Archivos originales</span><strong id="originals">—</strong></article><article><span>Espacio libre del volumen</span><strong id="space">—</strong><small id="reserve"></small></article></div>
+<section><div class="sectionTitle"><h2>Agregar conversaciones</h2><span class="tag">ZIP · carga reanudable</span></div>
+<label for="experiment">Nombre del experimento</label><input id="experiment" value="exploracion-local-v1" maxlength="100" required>
+<label for="files">Selecciona los ZIP de WhatsApp</label><input id="files" type="file" accept=".zip,application/zip" multiple>
+<p class="muted">Puedes agregar más lotes mientras el trabajador procesa. Si se interrumpe la subida, vuelve a seleccionar los mismos archivos: comprobaremos los bloques guardados antes de continuar. Los nombres repetidos no se sobrescriben.</p>
+<div class="inline"><button id="upload">Subir y poner en cola</button><button id="pause" class="secondary" disabled>Pausar subida</button></div>
+<progress id="progress" max="100" value="0"></progress><p id="uploadStatus" role="status"></p>
+<details><summary>Registro de esta carga</summary><ul id="uploadLog"></ul></details>
+</section>
+<section><div class="sectionTitle"><h2>Cargas</h2><span id="uploadCount" class="muted"></span></div>
+<div class="tableScroll"><table><thead><tr><th>Archivo</th><th>Recibido</th><th>Estado</th><th>Detalle</th><th>Acciones</th></tr></thead><tbody id="uploadsRows"></tbody></table></div>
+<div class="pagination"><button id="previousUploads" class="secondary">Anterior</button><span id="uploadPage"></span><button id="nextUploads" class="secondary">Siguiente</button></div></section>
+<section><div class="sectionTitle"><h2>Procesamiento</h2><span class="tag">Una tarea pesada a la vez</span></div><div id="stageStats" class="stageStats"></div>
+<p class="muted">Cada conversación puede contener varios hechos. Estos son conteos de archivos y tareas, todavía no de reportes consolidados.</p>
+<div class="tableScroll"><table><thead><tr><th>Etapa</th><th>Experimento</th><th>Estado</th><th>Intentos</th><th>Resultado</th></tr></thead><tbody id="jobsRows"></tbody></table></div>
+<div class="pagination"><button id="previousJobs" class="secondary">Anterior</button><span id="jobPage"></span><button id="nextJobs" class="secondary">Siguiente</button></div></section>
+<section id="resultBox" hidden><div class="sectionTitle"><h2>Salida del modelo</h2><button id="closeResult" class="secondary">Cerrar</button></div><p class="muted">Predicción original, métricas e identidad del modelo. Pendiente de revisión humana.</p><pre id="result"></pre></section>
+</div><footer>Semáforos Cali · Panel privado de ingesta y procesamiento. Mapa, PDF y consolidación de reportes en desarrollo.</footer></main></body></html>

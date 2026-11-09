@@ -1,7 +1,7 @@
 import argparse
 import json
 from pathlib import Path
-from .store import Store
+from .store import Store,LOCK_KEY
 from .config import load_config,storage_root
 from .ingest import import_zip
 
@@ -19,8 +19,14 @@ def main():
         worker_main()
     else:
         config=load_config();root=storage_root()
-        for source in args.zip:
-            try:print(json.dumps(import_zip(store,root,Path(source),config,args.experiment)))
-            except Exception as exc:print(json.dumps({'status':'error','code':type(exc).__name__}))
+        with store.connect() as c:
+            if not c.execute('SELECT pg_try_advisory_lock(%s) AS ok',(LOCK_KEY,)).fetchone()['ok']:
+                raise SystemExit('Trabajador ocupado. Usa la carga web para dejar el ZIP en cola.')
+            c.commit()
+            try:
+                for source in args.zip:
+                    try:print(json.dumps(import_zip(store,root,Path(source),config,args.experiment)))
+                    except Exception as exc:print(json.dumps({'status':'error','code':type(exc).__name__}))
+            finally:c.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,));c.commit()
 
 if __name__=='__main__':main()

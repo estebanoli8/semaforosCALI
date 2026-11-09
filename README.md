@@ -4,6 +4,7 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 
 ## Estado real
 
+- Panel privado integrado: cargas reanudables → PostgreSQL → trabajador multimodal. [Carga web y recuperación](docs/carga_web.md).
 - Nuevo núcleo privado `semaforos/`: PostgreSQL, cola, adaptadores audio/visión/texto, etiquetas y métricas. [Implementación y límites](docs/nucleo_multimodal.md). Inferencia real y despliegue pendientes.
 
 - Ingesta continua: más de 100 carpetas disponibles según el usuario, con cargas diarias variables. No hay tamaño fijo de lote.
@@ -12,7 +13,7 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 - 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
 - `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
 - Audio e imagen todavía no se interpretan automáticamente en este prototipo.
-- La conexión del núcleo a la carga web, mapa, PDF, correo e integración operativa n8n está pendiente. Este repositorio no despliega automáticamente al VPS.
+- La carga web ya está conectada al núcleo. Consolidación de reportes, mapa, PDF, correo e integración operativa n8n siguen pendientes. Este repositorio no despliega automáticamente al VPS.
 
 ## Documentación vigente
 
