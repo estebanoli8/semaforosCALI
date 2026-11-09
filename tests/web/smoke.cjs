@@ -71,6 +71,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#reviewConversation').selectOption('conversation-synthetic');
     await page.locator('#loadProposals').click();
     await page.getByRole('button',{name:'Revisar estas fuentes',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('#findingRows input[type="checkbox"]')?.checked===true);
     assert.equal(await page.getByRole('checkbox',{name:'Seleccionar Quinta con 5'}).isChecked(),true);
     assert.equal(report,null);
     await page.locator('#primaryFinding').selectOption(finding.id);
