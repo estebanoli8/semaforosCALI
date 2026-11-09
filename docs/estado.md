@@ -32,3 +32,7 @@ Actualización: más de 100 carpetas disponibles según el usuario; las 36 inici
 5. Empaquetar, probar recuperación y validar en VPS.
 
 No se acredita ninguna acción nueva en el VPS por crear este repositorio. Chatbot, reentrenamiento, Drive y X siguen fuera de esta entrega.
+
+## Actualización 2026-11-09
+
+Comparación privada de exportaciones con decisiones versionadas implementada y validada en CI. Propuestas deterministas de agrupación y consulta de posibles reportes repetidos implementadas; ver `propuestas_reportes.md`. No equivalen a agrupación automática completa. Falta reconciliar adjuntos y consolidar entre exportaciones. VPS sin cambios.

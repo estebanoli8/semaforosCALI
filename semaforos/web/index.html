@@ -39,6 +39,8 @@
 <p class="muted">Selecciona las afirmaciones que describen un mismo hecho. Un complemento se añade al reporte existente; otro cruce o una nueva observación explícita puede formar otro reporte. Las agrupaciones ambiguas requieren tu decisión. Los nombres de conversaciones y las fuentes son privados.</p>
 <label for="reviewConversation">Conversación</label><select id="reviewConversation"><option value="">Carga las conversaciones</option></select>
 <div class="inline"><button id="previousConversations" class="secondary" disabled>Conversaciones anteriores</button><button id="nextConversations" class="secondary" disabled>Más conversaciones</button></div>
+<button id="loadProposals" class="secondary">Proponer agrupaciones de esta conversación</button>
+<div id="proposalRows"></div><div class="inline"><button id="previousProposals" class="secondary" disabled>Anteriores propuestas</button><span id="proposalPage"></span><button id="nextProposals" class="secondary" disabled>Más propuestas</button></div>
 <p id="reviewNotice" role="status" aria-live="polite"></p>
 <div class="tableScroll"><table><thead><tr><th>Elegir</th><th>Variable / fuente</th><th>Cita literal</th><th>Fecha del mensaje</th><th>Ya vinculada</th></tr></thead><tbody id="findingRows"></tbody></table></div>
 <div class="pagination"><button id="previousFindings" class="secondary" disabled>Anterior</button><span id="findingPage"></span><button id="nextFindings" class="secondary" disabled>Siguiente</button></div>

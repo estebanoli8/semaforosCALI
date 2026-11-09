@@ -13,6 +13,7 @@ function chosen(){
   $('selectedFindings').textContent=selected.size+' afirmaciones seleccionadas (incluye otras páginas)';
 }
 async function loadConversations(){
+  clearProposals();
   const data=await api('/conversations?offset='+conversationOffset+'&limit='+reviewPageSize);
   conversationTotal=data.total;selected.clear();chosen();currentReport=null;$('reportDetailBox').hidden=true;$('findingRows').replaceChildren();$('reportRows').replaceChildren();
   $('reviewConversation').replaceChildren(new Option('Selecciona una conversación',''));
@@ -82,6 +83,7 @@ function guarded(id,fn){$(id).onclick=async()=>{if(reviewBusy)return;reviewBusy=
   $('attachReport').disabled=!currentReport;$('replaceReport').disabled=!currentReport;
   $('previousFindings').disabled=findingOffset===0;$('previousReports').disabled=reportOffset===0;$('previousConversations').disabled=conversationOffset===0;
   $('nextFindings').disabled=findingOffset+reviewPageSize>=findingTotal;$('nextReports').disabled=reportOffset+reviewPageSize>=reportTotal;$('nextConversations').disabled=conversationOffset+reviewPageSize>=conversationTotal;
+  $('previousProposals').disabled=proposalOffset===0;$('nextProposals').disabled=proposalOffset+20>=proposalTotal;
 }};}
 guarded('loadReview',loadConversations);
 $('reviewConversation').onchange=async()=>{selected.clear();chosen();currentReport=null;findingOffset=0;reportOffset=0;$('reportDetailBox').hidden=true;$('attachReport').disabled=true;$('replaceReport').disabled=true;$('reportSummary').value='';try{await Promise.all([loadFindings(),loadReports()]);}catch(e){reviewNotice(e.message);}};
@@ -94,3 +96,40 @@ for(const direction of ['previous','next']){
   guarded(direction+'Reports',async()=>{reportOffset=Math.max(0,reportOffset+(direction==='next'?reviewPageSize:-reviewPageSize));await loadReports();});
 }
 document.addEventListener('sc:logout',()=>{selected.clear();currentReport=null;pendingReportRequest=null;chosen();for(const id of ['findingRows','reportRows','reportDetail'])$(id).replaceChildren();$('reportDetailBox').hidden=true;$('reportReviewer').value='';$('reportReason').value='';$('reportSummary').value='';});
+
+// Proposals select sources for review; they never save or merge reports implicitly.
+let proposalOffset=0,proposalTotal=0;
+async function loadProposals(){
+  const cid=$('reviewConversation').value;if(!cid)throw Error('Selecciona una conversación.');
+  const data=await api('/report-proposals?conversation_id='+cid+'&offset='+proposalOffset+'&limit=20');
+  proposalTotal=data.total;$('proposalRows').replaceChildren();
+  const names={candidato_revisable:'Candidato: revisar antes de crear',requiere_separacion_o_contexto:'Falta contexto o hay varias ubicaciones',con_fuentes_ya_agrupadas:'Fuentes ya vinculadas a reportes',posible_reporte_en_otra_exportacion:'Posible repetición en otra exportación'};
+  for(const p of data.items){
+    const box=document.createElement('article'),heading=document.createElement('h3'),body=document.createElement('p');
+    heading.textContent=names[p.status];body.textContent=p.findings.map(f=>f.display_literal).join(' · ');box.append(heading,body);
+    if(p.reasons.length){const note=document.createElement('p');note.textContent=p.reasons.join(', ');box.append(note);}
+    if(p.findings.length<=200){const choose=button('Revisar estas fuentes',async()=>{
+      if($('reviewConversation').value!==cid)throw Error('La conversación cambió; vuelve a cargar propuestas.');
+      currentReport=null;selected.clear();for(const f of p.findings)selected.set(f.id,f);chosen();
+      $('primaryFinding').value=p.primary_finding_id||'';$('reportDetailBox').hidden=true;$('attachReport').disabled=true;$('replaceReport').disabled=true;$('reportSummary').value='';
+      await loadFindings();reviewNotice('Propuesta cargada. Comprueba cruce, momento y fuentes antes de crear. No se ha guardado ningún reporte.');
+    });box.append(choose);}
+    for(const r of [...p.existing_reports,...p.related_reports]){
+      const note=document.createElement('p');note.textContent='Reporte relacionado R-'+String(r.code).padStart(6,'0')+' · conversación '+r.conversation_id;box.append(note);
+      if(String(r.conversation_id)===cid)box.append(button('Abrir reporte relacionado',()=>openReport(r.id)));
+      else box.append(button('Consultar reporte de otra exportación',async()=>{
+        const detail=await api('/reports/'+r.id);$('result').textContent=JSON.stringify(detail,null,2);$('resultBox').hidden=false;
+        reviewNotice('Consulta de otra exportación. No se trasladaron ni fusionaron sus fuentes.');
+      }));
+    }
+    $('proposalRows').append(box);
+  }
+  $('proposalPage').textContent=data.total?`${proposalOffset+1}–${Math.min(proposalOffset+20,data.total)} de ${data.total}`:'Sin propuestas';
+  $('previousProposals').disabled=proposalOffset===0;$('nextProposals').disabled=proposalOffset+20>=proposalTotal;
+}
+function proposalAction(id,fn){$(id).onclick=async()=>{if(reviewBusy)return;reviewBusy=true;$(id).disabled=true;try{await fn();}catch(e){reviewNotice(e.message);}finally{reviewBusy=false;$(id).disabled=false;$('previousProposals').disabled=proposalOffset===0;$('nextProposals').disabled=proposalOffset+20>=proposalTotal;}};}
+proposalAction('loadProposals',async()=>{proposalOffset=0;await loadProposals();});
+proposalAction('previousProposals',async()=>{proposalOffset=Math.max(0,proposalOffset-20);await loadProposals();});
+proposalAction('nextProposals',async()=>{proposalOffset+=20;await loadProposals();});
+function clearProposals(){proposalOffset=0;proposalTotal=0;$('proposalRows').replaceChildren();$('proposalPage').textContent='';$('previousProposals').disabled=true;$('nextProposals').disabled=true;}
+$('reviewConversation').addEventListener('change',clearProposals);document.addEventListener('sc:logout',clearProposals);

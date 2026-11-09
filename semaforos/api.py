@@ -175,6 +175,13 @@ def create_app(store=None, root=None, config=None, token=None):
         try:return compare_parses(store,left_parse_id,right_parse_id)
         except ValueError as exc:raise HTTPException(422,str(exc))
 
+    @private.get('/report-proposals')
+    def report_proposals(conversation_id:UUID,offset:int=0,limit:int=20):
+        if offset<0 or not 1<=limit<=50:raise HTTPException(400,'Paginación inválida')
+        from .proposals import proposals
+        try:return proposals(store,conversation_id,offset,limit)
+        except ValueError as exc:raise HTTPException(422,str(exc))
+
     @private.get('/conversations')
     def conversations(offset:int=0,limit:int=50):
         if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')

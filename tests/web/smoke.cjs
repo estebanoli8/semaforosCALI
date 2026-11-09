@@ -30,6 +30,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       }
       else if(path==='/jobs')result={total:0,items:[]};
       else if(path==='/conversations')result={total:1,items:[{id:'conversation-synthetic',original_name:'Conversación sintética'}]};
+      else if(path==='/report-proposals')result={total:1,items:[{status:'candidato_revisable',reasons:[],findings:[finding],primary_finding_id:finding.id,existing_reports:[],related_reports:[]}]};
       else if(path==='/findings')result={total:1,items:[finding]};
       else if(path==='/reports'&&request.method()==='GET')result={total:report?1:0,active:report?1:0,items:report?[report]:[]};
       else if(path==='/reports'&&request.method()==='POST'){
@@ -68,7 +69,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(session.state,'queued');assert.equal(replays,1);assert.equal(chunks,3);
     await page.locator('#loadReview').click();
     await page.locator('#reviewConversation').selectOption('conversation-synthetic');
-    await page.getByRole('checkbox',{name:'Seleccionar Quinta con 5'}).check();
+    await page.locator('#loadProposals').click();
+    await page.getByRole('button',{name:'Revisar estas fuentes',exact:true}).click();
+    assert.equal(await page.getByRole('checkbox',{name:'Seleccionar Quinta con 5'}).isChecked(),true);
+    assert.equal(report,null);
     await page.locator('#primaryFinding').selectOption(finding.id);
     await page.locator('#reportReviewer').fill('Evaluador sintético');
     await page.locator('#reportReason').fill('Primer hecho: una ubicación respaldada por el chat');
