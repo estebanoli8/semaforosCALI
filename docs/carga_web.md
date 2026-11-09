@@ -52,3 +52,5 @@ GET /jobs ahora incluye el ID del último intento para abrir su salida y métric
 `tests/core/test_uploads.py` usa PostgreSQL real en GitHub Actions y ZIP sintéticos. Verifica autenticación, límite de memoria por bloque, reanudación, bloque duplicado concurrente, configuración congelada, rutas maliciosas, reserva de disco, paginación por encima de 100 cargas, recuperación tras importación y el camino HTTP → trabajador → resultado. La inferencia en estas pruebas es una función sintética: no acredita calidad de modelos reales.
 
 Próximo bloque: parser de WhatsApp con fechas y mensajes fuente, consolidación de hechos/versiones y panel de revisión. Luego mapa, PDF general, correo y n8n; finalmente empaquetado integral y validación en el VPS sin modificar otros proyectos.
+
+`tests/web/smoke.cjs` comprueba en Chromium acceso, interrupción/reanudación de una carga, ausencia de desbordamiento móvil y salida. Usa API simulada y captura pantallas sin datos ciudadanos; no sustituye la prueba HTTP/PostgreSQL.

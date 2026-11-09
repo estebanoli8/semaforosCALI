@@ -39,7 +39,7 @@ def create_app(store=None, root=None, config=None, token=None):
     token=token or os.environ['SC_API_TOKEN']
     if len(token)<32:raise ValueError('SC_API_TOKEN_requires_32_characters')
     def auth(authorization: str=Header(default='')):
-        if not hmac.compare_digest(authorization,'Bearer '+token):raise HTTPException(401,'Acceso privado')
+        if not hmac.compare_digest(authorization.encode(),('Bearer '+token).encode()):raise HTTPException(401,'Acceso privado')
     app=FastAPI(title='Semáforos Cali · Núcleo privado',docs_url=None,redoc_url=None,openapi_url=None)
     private=APIRouter(dependencies=[Depends(auth)])
     uploads=Uploads(store,root)
