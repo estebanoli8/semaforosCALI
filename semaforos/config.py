@@ -11,6 +11,8 @@ def load_config(path=None):
         if not isinstance(value.get(stage), dict):raise ValueError('missing_stage_config')
     if not 1 <= value['max_attempts'] <= 5:raise ValueError('invalid_max_attempts')
     if not 30 <= value['timeout_seconds'] <= 14400:raise ValueError('invalid_timeout')
+    from .whatsapp import options
+    options(value.get('whatsapp'))
     return value
 
 

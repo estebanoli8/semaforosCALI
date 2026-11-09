@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .config import load_config, storage_root
 from .store import Store
 from .files import contained
-from .worker import text_chunks
+from .messages import chat_sources
 from .evaluation import wer, detection_metrics, light_metrics
 
 
@@ -65,13 +65,29 @@ def create_app(store=None, root=None, config=None, token=None):
         if e['modality']=='chat':
             with store.connect() as c:row=c.execute('SELECT literal_text FROM source_texts WHERE evidence_id=%s',(e['id'],)).fetchone()
             if not row:raise HTTPException(409,'Texto fuente pendiente de importar')
-            return {'job_ids':[str(store.enqueue(e['id'],'text',body.experiment_id,config,{'sources':part})) for part in text_chunks(row['literal_text'],e['id'],'chat')]}
+            return {'job_ids':[str(store.enqueue(e['id'],'text',body.experiment_id,config,{'sources':part})) for part in chat_sources(store,e['id'],config)]}
         raise HTTPException(400,'Modalidad sin etapa automática')
     @private.get('/runs/{run_id}')
     def run(run_id:UUID):
         with store.connect() as c:r=c.execute('SELECT * FROM runs WHERE id=%s',(run_id,)).fetchone()
         if not r:raise HTTPException(404,'Ejecución no encontrada')
         return r
+    @private.get('/evidence/{evidence_id}/chat-parses')
+    def chat_parses(evidence_id:UUID):
+        with store.connect() as c:
+            return {'items':c.execute('SELECT * FROM chat_parses WHERE evidence_id=%s ORDER BY created_at DESC,id',(evidence_id,)).fetchall()}
+    @private.get('/chat-parses/{parse_id}/messages')
+    def messages(parse_id:UUID,offset:int=0,limit:int=50):
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        with store.connect() as c:
+            if not c.execute('SELECT id FROM chat_parses WHERE id=%s',(parse_id,)).fetchone():raise HTTPException(404,'Lectura de chat no encontrada')
+            rows=c.execute('SELECT * FROM messages WHERE parse_id=%s ORDER BY ordinal LIMIT %s OFFSET %s',(parse_id,limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM messages WHERE parse_id=%s',(parse_id,)).fetchone()['n']
+            attachments=c.execute('SELECT * FROM message_attachments WHERE message_id=ANY(%s::uuid[]) ORDER BY filename_literal',([row['id'] for row in rows],)).fetchall() if rows else []
+            grouped={row['id']:[] for row in rows}
+            for attachment in attachments:grouped[attachment['message_id']].append(attachment)
+            for row in rows:row['attachments']=grouped[row['id']]
+        return {'total':total,'items':rows}
     @private.post('/reviews')
     def review(body:Review):
         if body.field not in ('transcription','boxes','lights','assertions'):raise HTTPException(400,'Campo de revisión inválido')

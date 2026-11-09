@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "whatsapp": {"date_order": "DMY", "timezone": "America/Bogota", "two_digit_century": 2000},
   "audio": {
     "repository": "Systran/faster-whisper-small",
     "revision": "main",

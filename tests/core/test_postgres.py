@@ -31,7 +31,7 @@ class PostgresTests(unittest.TestCase):
 
     def test_migrations_are_repeatable(self):
         self.store.migrate()
-        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],2)
+        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],3)
 
     def test_idempotent_jobs_and_new_experiment(self):
         first=self.store.enqueue(self.eid,'audio','A',self.config)
@@ -94,3 +94,54 @@ class PostgresTests(unittest.TestCase):
         bad=self.root/'bad.zip'
         with zipfile.ZipFile(bad,'w') as z:z.writestr('../outside.txt','forbidden')
         with self.assertRaises(ValueError):import_zip(self.store,self.root,bad,self.config,'A')
+
+    def test_message_index_is_versioned_and_links_only_explicit_unique_files(self):
+        from semaforos.messages import index_chat,chat_sources
+        from unittest.mock import patch
+        text='[01/11/26, 10:00] Vecina: <attached: foto.jpg>\r\n[01/11/26, 10:01] Vecina: <attached: repetida.jpg>\r\n[01/11/26, 10:02] Vecina: <attached: ausente.opus>\r\n'
+        path=self.root/'Mensajes.zip'
+        with zipfile.ZipFile(path,'w') as z:
+            z.writestr('_chat.txt',text)
+            for name in ['foto.jpg','a/repetida.jpg','b/repetida.jpg']:z.writestr(name,b'synthetic image')
+        with patch.dict(os.environ,{'SC_RESERVE_BYTES':'0'}):result=import_zip(self.store,self.root,path,self.config,'messages')
+        with self.store.connect() as c:
+            evidence=c.execute("SELECT id FROM evidence WHERE modality='chat'").fetchone()['id']
+            records=c.execute('SELECT * FROM messages ORDER BY ordinal').fetchall()
+            links=c.execute('SELECT filename_literal,state,evidence_id FROM message_attachments').fetchall()
+            self.assertEqual(c.execute('SELECT literal_text FROM source_texts').fetchone()['literal_text'],text)
+        self.assertEqual(''.join(r['raw_text'] for r in records),text)
+        self.assertEqual({r['filename_literal']:r['state'] for r in links},{'foto.jpg':'linked','repetida.jpg':'ambiguous','ausente.opus':'missing'})
+        first=index_chat(self.store,evidence,self.config)
+        self.assertEqual(first,index_chat(self.store,evidence,self.config))
+        changed=copy.deepcopy(self.config);changed['whatsapp']['date_order']='AUTO'
+        second=index_chat(self.store,evidence,changed)
+        self.assertNotEqual(first,second)
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM chat_parses').fetchone()['n'],2)
+            self.assertTrue(all(r['sent_at'] is None for r in c.execute('SELECT sent_at FROM messages WHERE parse_id=%s',(second,))))
+        sources=[s for group in chat_sources(self.store,evidence,self.config) for s in group]
+        self.assertEqual({s['message_id'] for s in sources},{str(r['id']) for r in records})
+        self.assertEqual(''.join(s['text'] for s in sources),text)
+
+    def test_message_api_requires_auth_and_preserves_source_dates(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        from unittest.mock import patch
+        path=self.root/'Ejemplo.zip'
+        with zipfile.ZipFile(path,'w') as z:z.writestr('_chat.txt','1/11/2026, 10:00 - Vecino: Lleva tres días apagado.\n')
+        with patch.dict(os.environ,{'SC_RESERVE_BYTES':'0'}):result=import_zip(self.store,self.root,path,self.config,'messages')
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32));auth={'Authorization':'Bearer '+'x'*32}
+        eid=result['evidence_ids'][0]
+        path=f'/evidence/{eid}/chat-parses'
+        self.assertEqual(client.get(path).status_code,401)
+        parse_id=client.get(path,headers=auth).json()['items'][0]['id']
+        path=f'/chat-parses/{parse_id}/messages'
+        self.assertEqual(client.get(path).status_code,401)
+        data=client.get(path,headers=auth).json()
+        self.assertEqual(data['total'],1)
+        from datetime import datetime
+        self.assertEqual(datetime.fromisoformat(data['items'][0]['sent_at']).isoformat(),'2026-11-01T15:00:00+00:00')
+        self.assertEqual(data['items'][0]['body_text'],'Lleva tres días apagado.\n')
+        self.assertEqual(client.get(path+'?offset=1',headers=auth).json()['items'],[])
+        self.assertEqual(client.get(path+'?limit=1000',headers=auth).status_code,400)
+        client.close()

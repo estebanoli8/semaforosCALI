@@ -4,6 +4,8 @@ IA multimodal para conservar, interpretar y consultar reportes ciudadanos de sem
 
 ## Estado real
 
+- Mensajes WhatsApp versionados: fechas, remitentes privados, texto literal y referencias a archivos. [Trazabilidad y supuestos](docs/mensajes_whatsapp.md).
+
 - Panel privado integrado: cargas reanudables → PostgreSQL → trabajador multimodal. [Carga web y recuperación](docs/carga_web.md).
 - Nuevo núcleo privado `semaforos/`: PostgreSQL, cola, adaptadores audio/visión/texto, etiquetas y métricas. [Implementación y límites](docs/nucleo_multimodal.md). Inferencia real y despliegue pendientes.
 

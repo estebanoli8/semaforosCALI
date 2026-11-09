@@ -9,7 +9,7 @@ import stat
 import tempfile
 import zipfile
 from .files import contained, sha256, canonical_hash
-from .worker import text_chunks
+from .messages import chat_sources
 
 MODES={'.txt':'chat','.jpg':'image','.jpeg':'image','.png':'image','.webp':'image',
        '.opus':'audio','.ogg':'audio','.m4a':'audio','.mp3':'audio','.wav':'audio',
@@ -51,7 +51,7 @@ def import_zip(store,root,source,config,experiment):
             c.execute('INSERT INTO source_archives(id,conversation_id,sha256,original_name,storage_path,size_bytes) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(storage_path) DO NOTHING',
                       (uuid4(),cid,digest,source.name,str(original.relative_to(root)),source.stat().st_size))
             canonical_name=c.execute('SELECT original_name FROM conversations WHERE id=%s',(cid,)).fetchone()['original_name']
-        ids=[];scheduled=[]
+        ids=[];scheduled=[];chats=[]
         # source.zip y carpeta original separados para evitar colisiones de nombres internos.
         original_folder=folder/'contents'/canonical_name
         for item in entries:
@@ -77,10 +77,13 @@ def import_zip(store,root,source,config,experiment):
             if stage:scheduled.append((eid,stage,{}))
             elif modality=='chat':
                 if target.stat().st_size>32*1024**2:raise ValueError('chat_requires_streaming_parser')
-                text=target.read_text(encoding='utf-8-sig')
+                text=target.read_bytes().decode('utf-8-sig')
                 with store.connect() as c:
                     c.execute('INSERT INTO source_texts(evidence_id,literal_text) VALUES(%s,%s) ON CONFLICT(evidence_id) DO NOTHING',(eid,text))
-                for sources in text_chunks(text,eid,'chat'):
-                    scheduled.append((eid,'text',{'sources':sources}))
+                chats.append(eid)
+        # Index only after every original exists, so attachment references can resolve.
+        for eid in chats:
+            for sources in chat_sources(store,eid,config):
+                scheduled.append((eid,'text',{'sources':sources}))
         for eid,stage,payload in scheduled:store.enqueue(eid,stage,experiment,config,payload)
         return {'conversation_id':str(cid),'evidence_ids':ids,'zip_sha256':digest}

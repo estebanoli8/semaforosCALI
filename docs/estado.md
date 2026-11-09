@@ -17,6 +17,7 @@ Actualización: más de 100 carpetas disponibles según el usuario; las 36 inici
 | Whisper, detector/lectura de luces | Adaptadores implementados en núcleo privado; inferencia real pendiente |
 | PostgreSQL | Esquema, cola y revisión implementados; validación PostgreSQL v0.5 aprobada en CI; VPS pendiente |
 | Carga web conectada al núcleo | Implementada en v0.6; pruebas de recuperación y protección de datos en CI |
+| Mensajes fuente y fechas WhatsApp | v0.7: parser versionado, texto literal, fechas con supuestos y enlaces explícitos a adjuntos; pendiente validación con exportaciones reales |
 | Integración operativa n8n | Pendiente |
 | Panel completo de experimentos, mapa, PDF y correo | Pendiente |
 | Instalador integral | Pendiente de construcción y verificación de infraestructura |

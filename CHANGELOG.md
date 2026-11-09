@@ -1,5 +1,13 @@
 # Historial
 
+## 2026-11-08 — v0.7 mensajes fuente
+
+- Parser iOS/Android, fechas UTC con supuestos explícitos, cuerpo y cabecera literal.
+- Índice PostgreSQL versionado, adjuntos vinculados por nombre explícito único, fuentes del modelo con ID y fecha del mensaje.
+- API privada paginada para explorar mensajes y lecturas previas; pruebas sintéticas y PostgreSQL.
+- Corregido runner de prueba web a Ubuntu 24.04 compatible con Playwright fijado.
+- No implica consolidación final de reportes, evaluación de modelos reales ni despliegue VPS.
+
 ## Base de desarrollo — 2026-11-08
 
 - Incorporado prototipo v0.3 existente con sus pruebas.
