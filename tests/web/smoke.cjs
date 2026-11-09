@@ -11,17 +11,23 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const page=await browser.newPage({viewport:{width:1440,height:1100}});
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
-    let report=null;
+    let report=null,relation=null;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
     await page.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
-      if(['/', '/panel.js', '/panel.css', '/review.js'].includes(path))return route.continue();
+      if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
       if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
+      else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
+      else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
+      else if(path==='/export-relations'&&request.method()==='GET')result={total:relation?1:0,version:relation?1:0,items:relation?[relation]:[]};
+      else if(path==='/export-relations'&&request.method()==='POST'){
+        const body=request.postDataJSON();assert.equal(body.expected_version,0);assert.equal(body.decision,'misma_conversacion');assert.ok(body.request_id);relation={...body,version:1};result=relation;
+      }
       else if(path==='/jobs')result={total:0,items:[]};
       else if(path==='/conversations')result={total:1,items:[{id:'conversation-synthetic',original_name:'Conversación sintética'}]};
       else if(path==='/findings')result={total:1,items:[finding]};
@@ -70,7 +76,14 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#reportDetailBox').waitFor({state:'visible'});
     assert.equal(report.revision,'pendiente');assert.deepEqual(report.findings,[finding]);
     assert.match(await page.locator('#reportTitle').textContent(),/R-000001/);
-    mkdirSync('test-artifacts',{recursive:true});
+    await page.locator('#loadExports').click();
+    await page.locator('#leftExport').selectOption('parse-a');await page.locator('#rightExport').selectOption('parse-b');
+    await page.locator('#compareExports').click();await page.waitForFunction(()=>!document.getElementById('saveRelation').disabled);
+    await page.locator('#relationReviewer').fill('Equipo');await page.locator('#relationReason').fill('Comparado con originales');
+    await page.locator('#relationDecision').selectOption('misma_conversacion');await page.locator('#saveRelation').click();
+    await page.waitForFunction(()=>document.getElementById('relationHistory').textContent.includes('misma_conversacion'));
+    assert.equal(relation.version,1);
+    mkdirSync('test-artifacts' ,{recursive:true});
     await page.screenshot({path:'test-artifacts/panel-desktop.png',fullPage:true});
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);

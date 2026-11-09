@@ -17,6 +17,16 @@ from .evaluation import wer, detection_metrics, light_metrics
 from .reports import ReportError, change as change_report, detail as report_detail
 
 
+class ExportDecision(BaseModel):
+    request_id: UUID
+    left_parse_id: UUID
+    right_parse_id: UUID
+    expected_version: int = Field(ge=0)
+    decision: Literal['misma_conversacion','distintas','pendiente']
+    reviewer: str = Field(min_length=1,max_length=100)
+    reason: str = Field(min_length=1,max_length=2000)
+
+
 class ReportChange(BaseModel):
     request_id: UUID
     action: Literal['create','attach','replace','review']
@@ -132,6 +142,32 @@ def create_app(store=None, root=None, config=None, token=None):
     @app.exception_handler(ReportError)
     async def report_error(request,exc):
         return JSONResponse(status_code=409,content={'detail':str(exc)})
+
+    @app.get('/comparison.js')
+    def comparison_script():return FileResponse(Path(__file__).with_name('web')/'comparison.js',media_type='text/javascript')
+
+    @private.get('/export-indexes')
+    def export_indexes(offset:int=0,limit:int=50):
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        with store.connect() as c:
+            rows=c.execute('SELECT p.id,p.created_at,p.parser_version,e.original_name AS chat_name,v.original_name AS zip_name FROM chat_parses p JOIN evidence e ON e.id=p.evidence_id JOIN conversations v ON v.id=e.conversation_id ORDER BY p.created_at DESC,p.id LIMIT %s OFFSET %s',(limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM chat_parses').fetchone()['n']
+        return {'items':rows,'total':total}
+
+    @private.get('/export-relations')
+    def export_relations(left_parse_id:UUID,right_parse_id:UUID,offset:int=0,limit:int=20):
+        if offset<0 or not 1<=limit<=100:raise HTTPException(400,'Paginación inválida')
+        left,right=sorted([str(left_parse_id),str(right_parse_id)])
+        with store.connect() as c:
+            rows=c.execute('SELECT * FROM export_relation_events WHERE left_parse_id=%s AND right_parse_id=%s ORDER BY version DESC LIMIT %s OFFSET %s',(left,right,limit,offset)).fetchall()
+            total=c.execute('SELECT count(*) AS n FROM export_relation_events WHERE left_parse_id=%s AND right_parse_id=%s',(left,right)).fetchone()['n']
+        return {'items':rows,'total':total,'version':total}
+
+    @private.post('/export-relations')
+    def export_decision(body:ExportDecision):
+        from .reconciliation import decide
+        try:return decide(store,body.model_dump(mode='json'))
+        except ValueError as exc:raise HTTPException(409,str(exc))
 
     @private.get('/conversation-comparison')
     def conversation_comparison(left_parse_id:UUID,right_parse_id:UUID):

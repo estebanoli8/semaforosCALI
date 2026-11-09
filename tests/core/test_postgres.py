@@ -31,7 +31,7 @@ class PostgresTests(unittest.TestCase):
 
     def test_migrations_are_repeatable(self):
         self.store.migrate()
-        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],4)
+        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],5)
 
     def test_idempotent_jobs_and_new_experiment(self):
         first=self.store.enqueue(self.eid,'audio','A',self.config)

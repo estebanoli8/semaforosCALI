@@ -41,3 +41,27 @@ def compare_parses(store,left_id,right_id):
             if len(rows)>10000:raise ValueError('comparison_limit_10000_messages')
             sides.append(rows)
         return dict(compare(*sides),left_parse_id=str(left_id),right_parse_id=str(right_id))
+
+
+def decide(store,payload):
+    """Append-only pair decision, with optimistic concurrency and request replay."""
+    from psycopg.types.json import Jsonb
+    left,right=sorted([str(payload['left_parse_id']),str(payload['right_parse_id'])])
+    if left==right:raise ValueError('choose_two_different_exports')
+    if not payload['reviewer'].strip() or not payload['reason'].strip():raise ValueError('reviewer_and_reason_required')
+    if payload['decision'] not in ('misma_conversacion','distintas','pendiente'):raise ValueError('invalid_decision')
+    snapshot=compare_parses(store,left,right)
+    digest=canonical_hash(payload)
+    with store.connect() as c:
+        # Always lock request before pair: safe replay even with changed pair inputs.
+        c.execute('SELECT pg_advisory_xact_lock(%s)',(int(canonical_hash(str(payload['request_id']))[:15],16),))
+        old=c.execute('SELECT * FROM export_relation_events WHERE request_id=%s',(payload['request_id'],)).fetchone()
+        if old:
+            if old['payload_hash']!=digest:raise ValueError('request_id_reused')
+            return old
+        c.execute('SELECT pg_advisory_xact_lock(%s)',(int(canonical_hash([left,right])[:15],16),))
+        last=c.execute('SELECT max(version) AS v FROM export_relation_events WHERE left_parse_id=%s AND right_parse_id=%s',(left,right)).fetchone()['v'] or 0
+        if payload['expected_version']!=last:raise ValueError('version_conflict_reload')
+        return c.execute('''INSERT INTO export_relation_events(request_id,left_parse_id,right_parse_id,version,decision,reviewer,reason,payload_hash,comparison)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
+            (payload['request_id'],left,right,last+1,payload['decision'],payload['reviewer'],payload['reason'],digest,Jsonb(snapshot))).fetchone()

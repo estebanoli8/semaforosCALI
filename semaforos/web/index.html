@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Semáforos Cali · Procesamiento</title><link rel="stylesheet" href="/panel.css"><script defer src="/panel.js"></script><script defer src="/review.js"></script></head>
+<title>Semáforos Cali · Procesamiento</title><link rel="stylesheet" href="/panel.css"><script defer src="/panel.js"></script><script defer src="/review.js"></script><script defer src="/comparison.js"></script></head>
 <body><header><span class="mark" aria-hidden="true">● ● ●</span><span>SEMÁFOROS CALI</span><span class="private">Acceso privado</span></header>
 <main><div class="heading"><p class="eyebrow">DEL MENSAJE A LA EVIDENCIA</p><h1>Las voces de la ciudad,<br>en un mismo lugar.</h1>
 <p class="lead">Carga conversaciones y sigue su procesamiento. Los originales se conservan; las interpretaciones quedan pendientes de revisión.</p></div>
@@ -24,7 +24,18 @@
 <p class="muted">Cada conversación puede contener varios hechos. Estos son conteos de archivos y tareas, todavía no de reportes consolidados.</p>
 <div class="tableScroll"><table><thead><tr><th>Etapa</th><th>Experimento</th><th>Estado</th><th>Intentos</th><th>Resultado</th></tr></thead><tbody id="jobsRows"></tbody></table></div>
 <div class="pagination"><button id="previousJobs" class="secondary">Anterior</button><span id="jobPage"></span><button id="nextJobs" class="secondary">Siguiente</button></div></section>
-<section id="reviewWorkspace"><div class="sectionTitle"><h2>De afirmaciones a reportes</h2><button id="loadReview" class="secondary">Cargar conversaciones</button></div>
+<section id="comparisonWorkspace"><h2>Comparar exportaciones</h2>
+<p>Compara dos índices de chat. Confirmar su relación conserva todos los archivos y reportes; todavía no fusiona ni elimina duplicados.</p>
+<button id="loadExports">Cargar más exportaciones</button><span id="exportCount"></span>
+<label for="leftExport">Exportación A</label><select id="leftExport"><option value="">Selecciona</option></select>
+<label for="rightExport">Exportación B</label><select id="rightExport"><option value="">Selecciona</option></select>
+<button id="compareExports">Comparar y consultar historial</button>
+<pre id="comparisonResult"></pre><pre id="relationHistory"></pre>
+<label for="relationDecision">Decisión humana</label><select id="relationDecision"><option value="pendiente">Pendiente</option><option value="misma_conversacion">Misma conversación</option><option value="distintas">Conversaciones distintas</option></select>
+<label for="relationReviewer">Quién revisa</label><input id="relationReviewer" maxlength="100">
+<label for="relationReason">Motivo</label><textarea id="relationReason" maxlength="2000"></textarea>
+<button id="saveRelation" disabled>Guardar decisión</button><p id="relationNotice" role="status"></p>
+</section><section id="reviewWorkspace"><div class="sectionTitle"><h2>De afirmaciones a reportes</h2><button id="loadReview" class="secondary">Cargar conversaciones</button></div>
 <p class="muted">Selecciona las afirmaciones que describen un mismo hecho. Un complemento se añade al reporte existente; otro cruce o una nueva observación explícita puede formar otro reporte. Las agrupaciones ambiguas requieren tu decisión. Los nombres de conversaciones y las fuentes son privados.</p>
 <label for="reviewConversation">Conversación</label><select id="reviewConversation"><option value="">Carga las conversaciones</option></select>
 <div class="inline"><button id="previousConversations" class="secondary" disabled>Conversaciones anteriores</button><button id="nextConversations" class="secondary" disabled>Más conversaciones</button></div>
@@ -44,4 +55,4 @@
 <div id="reportDetailBox" hidden><h3 id="reportTitle"></h3><p class="muted">Revisado significa cotejado con las fuentes; no confirma una inspección física.</p><div class="inline"><button id="approveReport">Marcar revisado</button><button id="pendingReport" class="secondary">Volver a pendiente</button><button id="discardReport" class="secondary">Descartar del conteo</button><button id="historyReport" class="secondary">Ver historial</button></div><pre id="reportDetail"></pre></div>
 </section>
 <section id="resultBox" hidden><div class="sectionTitle"><h2>Salida del modelo</h2><button id="closeResult" class="secondary">Cerrar</button></div><p class="muted">Predicción original, métricas e identidad del modelo. Pendiente de revisión humana.</p><pre id="result"></pre></section>
-</div><footer>Semáforos Cali · Panel privado de ingesta y procesamiento. Mapa, PDF y consolidación de reportes en desarrollo.</footer></main></body></html>
+</div><footer>Semáforos Cali · Panel privado de ingesta y procesamiento. Mapa, PDF y consolidación automática en desarrollo.</footer></main></body></html>
