@@ -133,6 +133,12 @@ def create_app(store=None, root=None, config=None, token=None):
     async def report_error(request,exc):
         return JSONResponse(status_code=409,content={'detail':str(exc)})
 
+    @private.get('/conversation-comparison')
+    def conversation_comparison(left_parse_id:UUID,right_parse_id:UUID):
+        from .reconciliation import compare_parses
+        try:return compare_parses(store,left_parse_id,right_parse_id)
+        except ValueError as exc:raise HTTPException(422,str(exc))
+
     @private.get('/conversations')
     def conversations(offset:int=0,limit:int=50):
         if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
