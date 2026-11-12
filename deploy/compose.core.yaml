@@ -17,17 +17,6 @@ services:
     mem_limit: 512m
     cpus: 0.5
     restart: unless-stopped
-  migrate:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.core
-    command: [python, -m, semaforos, migrate]
-    environment:
-      SC_DATABASE_URL: ${SC_DATABASE_URL:?Configurar URL de base exclusiva}
-    depends_on:
-      database:
-        condition: service_healthy
-    restart: 'no'
   api:
     build:
       context: ..
@@ -35,12 +24,13 @@ services:
     environment:
       SC_DATABASE_URL: ${SC_DATABASE_URL:?Configurar URL de base exclusiva}
       SC_API_TOKEN: ${SC_API_TOKEN:?Configurar token privado de 32 caracteres o más}
+      SC_PROCESS: api
     volumes:
       - core_data:/data
     expose: ["8000"]
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      database:
+        condition: service_healthy
     mem_limit: 512m
     cpus: 0.5
     restart: unless-stopped
@@ -48,18 +38,18 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.core
-    command: [python, -m, semaforos, worker]
     environment:
       SC_DATABASE_URL: ${SC_DATABASE_URL:?Configurar URL de base exclusiva}
       OLLAMA_URL: ${OLLAMA_URL:?Configurar dirección interna autorizada de Ollama}
+      SC_PROCESS: worker
       OMP_NUM_THREADS: '2'
       MKL_NUM_THREADS: '2'
     volumes:
       - core_data:/data
       - core_models:/models
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      database:
+        condition: service_healthy
     mem_limit: 3g
     cpus: 2
     restart: unless-stopped

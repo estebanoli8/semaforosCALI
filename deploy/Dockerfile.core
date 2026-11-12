@@ -9,4 +9,4 @@ COPY config/modelos.json ./config/modelos.json
 COPY prototype/v0_3/video.py ./prototype/v0_3/video.py
 ENV PYTHONUNBUFFERED=1 SC_STORAGE=/data/core SC_MODELS_DIR=/models
 EXPOSE 8000
-CMD ["uvicorn", "semaforos.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "semaforos.service"]
