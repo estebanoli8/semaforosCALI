@@ -85,5 +85,12 @@ def import_zip(store,root,source,config,experiment):
         for eid in chats:
             for sources in chat_sources(store,eid,config):
                 scheduled.append((eid,'text',{'sources':sources}))
-        for eid,stage,payload in scheduled:store.enqueue(eid,stage,experiment,config,payload)
+        from .messages import team_audio
+        for eid,stage,payload in scheduled:
+            if stage=='audio' and team_audio(store,eid):
+                with store.connect() as c:
+                    c.execute("UPDATE evidence SET metadata=metadata || %s::jsonb WHERE id=%s",
+                              ('{"processing_excluded":"team_sender_audio","sender":"Esteban Oli"}',eid))
+                continue
+            store.enqueue(eid,stage,experiment,config,payload)
         return {'conversation_id':str(cid),'evidence_ids':ids,'zip_sha256':digest}
