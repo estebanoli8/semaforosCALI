@@ -53,7 +53,7 @@ def execute(spec):
         result,identity=detect(path,config,out)
     elif stage=='lights':
         from .adapters.vision import read_lights
-        result,identity=read_lights(path,spec['payload']['detections'],config)
+        result,identity=read_lights(path,spec['payload']['detections'],config,on_progress=progress)
     elif stage=='text':
         from .adapters.text import extract
         progress(phase='Generando JSON')
