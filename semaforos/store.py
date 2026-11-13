@@ -67,15 +67,23 @@ class Store:
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING id''',
                 (uuid4(),evidence_id,stage,experiment,Jsonb(config),canonical_hash(config),__version__,Jsonb(payload),key,config['max_attempts'])).fetchone()['id']
 
-    def claim(self, c, job_id=None):
+    def claim(self, c, job_id=None, conversation_id=None):
         # El llamador conserva advisory lock de sesión durante TODO el proceso pesado.
-        c.execute("UPDATE runs SET state='interrupted',finished_at=now(),error_code='worker_lost' WHERE state='running' AND job_id IN (SELECT id FROM jobs WHERE state='running' AND lease_until<now() AND (%s::uuid IS NULL OR id=%s::uuid))",(job_id,job_id))
-        c.execute("UPDATE jobs SET state='failed',updated_at=now() WHERE state='running' AND lease_until<now() AND attempts>=max_attempts AND (%s::uuid IS NULL OR id=%s::uuid)",(job_id,job_id))
+        c.execute("""UPDATE runs SET state='interrupted',finished_at=now(),error_code='worker_lost'
+            WHERE state='running' AND job_id IN (SELECT j.id FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+            WHERE j.state='running' AND j.lease_until<now() AND (%s::uuid IS NULL OR j.id=%s::uuid)
+            AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid))""",(job_id,job_id,conversation_id,conversation_id))
+        c.execute("""UPDATE jobs j SET state='failed',updated_at=now() FROM evidence e
+            WHERE e.id=j.evidence_id AND j.state='running' AND j.lease_until<now() AND j.attempts>=j.max_attempts
+            AND (%s::uuid IS NULL OR j.id=%s::uuid) AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)""",
+            (job_id,job_id,conversation_id,conversation_id))
         row=c.execute("""SELECT j.*,e.storage_path,e.sha256,e.conversation_id,e.modality,e.metadata AS evidence_metadata
             FROM jobs j JOIN evidence e ON e.id=j.evidence_id
             WHERE (j.state='pending' AND j.available_at<=now() OR j.state='running' AND j.lease_until<now())
             AND j.attempts<j.max_attempts AND (%s::uuid IS NULL OR j.id=%s::uuid)
-            ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""",(job_id,job_id)).fetchone()
+            AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
+            ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
+            (job_id,job_id,conversation_id,conversation_id)).fetchone()
         if not row:c.commit();return None
         token=uuid4();run_id=uuid4()
         c.execute("UPDATE jobs SET state='running',attempts=attempts+1,lease_token=%s,lease_until=now()+interval '90 seconds',updated_at=now() WHERE id=%s",(token,row['id']))
