@@ -25,7 +25,8 @@
     "min_crop_side": 16,
     "context": 4096,
     "max_tokens": 200,
-    "threads": 2
+    "threads": 2,
+    "keep_alive": "2m"
   },
   "text": {
     "model": "qwen3:4b-instruct",

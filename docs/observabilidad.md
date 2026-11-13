@@ -21,10 +21,19 @@ tarea. Los archivos originales, las salidas y los reintentos permanecen en
 Si falla la extracción de texto o la lectura de luces, el panel ofrece
 **Reintentar modelo** para una ejecución adicional con la configuración de esa
 tarea. Conserva los intentos anteriores y solo permite reintentar una tarea
-ya fallida, hasta cinco
-intentos en total. Los códigos de error conocidos de validación se muestran
+ya fallida, hasta cinco intentos en total. Los códigos de error conocidos de validación se muestran
 sin incluir el texto ciudadano; los mensajes arbitrarios del modelo y de las
 librerías siguen ocultos. Un nuevo intento no garantiza una salida válida.
+
+En los nuevos trabajos de lectura de luces el modelo visual permanece cargado
+dos minutos entre solicitudes (`keep_alive`); el de texto continúa descargándose
+después de cada petición para limitar la RAM simultánea. La configuración de
+cada trabajo se fija al crearlo, por lo que esta mejora no modifica trabajos
+ya encolados. Comparar `load_duration` y `wall_seconds` entre trabajos nuevos y
+anteriores antes de atribuirle una ganancia. La evidencia original no se escala
+ni se recomprime; la detección redimensiona internamente a 960 píxeles y la
+lectura de luces usa un recorte de hasta 640 píxeles. Los fotogramas derivados
+ya tienen un límite de 1280 píxeles y el audio de video usa mono de 16 kHz.
 
 Antes de cambiar recursos en Easypanel, medir CPU/RAM del host y de los dos
 contenedores bajo carga (`docker stats --no-stream`), y revisar `wall_seconds`,

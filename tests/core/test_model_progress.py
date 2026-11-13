@@ -31,6 +31,19 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(seen[-1],'{"assertions":[],"summary":null}')
         self.assertEqual(metrics['eval_count'],12)
         self.assertTrue(json.loads(url.call_args[0][0].data)['stream'])
+        self.assertEqual(json.loads(url.call_args[0][0].data)['keep_alive'],0)
+
+    def test_visual_model_keeps_its_configured_cache_duration(self):
+        class Response:
+            def read(self, size):return json.dumps({'done':True,'message':{'content':'{}'}}).encode()
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+        config={'model':'synthetic','context':100,'max_tokens':60,'threads':2,'keep_alive':'2m'}
+        with patch('semaforos.adapters.ollama.identity',return_value={'digest':'abc'}),\
+             patch('semaforos.adapters.ollama.urlopen',return_value=Response()) as url,\
+             patch.dict('os.environ',{'OLLAMA_URL':'http://127.0.0.1:11434'}):
+            chat(config,[{'role':'user','content':'imagen sintética'}])
+        self.assertEqual(json.loads(url.call_args[0][0].data)['keep_alive'],'2m')
 
     def test_incomplete_stream_is_rejected(self):
         class Response:

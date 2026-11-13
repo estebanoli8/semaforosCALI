@@ -49,7 +49,8 @@ def identity(config):
 def chat(config, messages, on_partial=None):
     model_id=identity(config)
     payload={'model':config['model'],'messages':messages,'stream':False,'think':False,
-        'format':'json','keep_alive':0,'options':{'temperature':0,'num_ctx':config['context'],'num_predict':config['max_tokens'],'num_thread':config['threads']}}
+        'format':'json','keep_alive':config.get('keep_alive',0),
+        'options':{'temperature':0,'num_ctx':config['context'],'num_predict':config['max_tokens'],'num_thread':config['threads']}}
     result=stream_chat(payload,on_partial) if on_partial else request('/api/chat',payload)
     if result.get('done_reason')=='length':raise ValueError('truncated_model_output')
     if not result.get('done',False):raise ValueError('incomplete_model_output')
