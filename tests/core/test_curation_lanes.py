@@ -34,6 +34,13 @@ class CurationLanesTests(unittest.TestCase):
         with self.store.connect() as c:
             job=self.store.claim(c,job_id=ident);self.store.complete(c,job,self.audio_output())
         expand(self.store,self.root)
+        from semaforos.findings import index_run
+        with self.store.connect() as c:
+            old_text=self.store.claim(c)
+            source=old_text['payload']['sources'][0]
+            self.store.complete(c,old_text,{'result':{'extraction':{'summary':'Ubicación',
+                'assertions':[{'source_id':source['id'],'variable':'ubicacion','literal':'Quinta con seis','interpretation':None}]}},'metrics':{},'model_identity':{}})
+        index_run(self.store,old_text['run_id'])
         answer=save(self.store,job['run_id'],'corrected','Reviewer','Quinta con cinco')
         self.assertEqual(len(answer['job_ids']),1)
         expand(self.store,self.root)
@@ -57,9 +64,21 @@ class CurationLanesTests(unittest.TestCase):
                 'assertions':[{'source_id':source['id'],'variable':'ubicacion','literal':'Quinta con cinco','interpretation':None}]}},'metrics':{},'model_identity':{}})
         index_run(self.store,claimed['run_id'])
         with self.store.connect() as c:
-            finding=c.execute('SELECT literal,source_ref FROM findings').fetchone()
+            finding=c.execute("SELECT literal,source_ref FROM findings WHERE literal='Quinta con cinco'").fetchone()
             self.assertEqual(finding['literal'],'Quinta con cinco')
             self.assertEqual(finding['source_ref']['transcription_review_id'],answer['review_id'])
+            cid=c.execute('SELECT conversation_id FROM evidence WHERE id=%s',(self.eid,)).fetchone()['conversation_id']
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32))
+        headers={'Authorization':'Bearer '+'x'*32}
+        self.assertEqual(client.get('/curation/'+str(cid)).status_code,401)
+        rows=client.get('/curation/'+str(cid),headers=headers)
+        self.assertEqual(rows.status_code,200);self.assertEqual(len(rows.json()['items']),3)
+        findings=client.get('/findings?conversation_id='+str(cid),headers=headers).json()
+        self.assertEqual([f['literal'] for f in findings['items']],['Quinta con cinco'])
+        proposals=client.get('/report-proposals?conversation_id='+str(cid),headers=headers).json()
+        self.assertEqual(proposals['total'],1)
 
     def test_zip_filters_team_text_and_explicit_audio_but_keeps_unknown(self):
         import zipfile

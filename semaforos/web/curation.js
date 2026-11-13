@@ -94,9 +94,9 @@ async function updateGroup(group){
     }
   }finally{group.busy=false;}
 }
-async function loadCurationConversations(){
-  const epoch=curationEpoch,data=await api('/conversations?offset='+curationOffset+'&limit=10');if(epoch!==curationEpoch)return;
-  curationOffset+=data.items.length;
+async function loadCurationConversations(offset=curationOffset){
+  const epoch=curationEpoch,data=await api('/conversations?offset='+offset+'&limit=10');if(epoch!==curationEpoch)return;
+  curationOffset=Math.max(curationOffset,offset+data.items.length);
   for(const conversation of data.items){
     if(curationGroups.has(conversation.id))continue;
     const element=cnode('details'),body=cnode('div');element.className='curationConversation';
@@ -109,7 +109,7 @@ async function loadCurationConversations(){
 }
 async function loadCuration(){
   if(curationBusy||!token)return;curationBusy=true;
-  try{if(!curationGroups.size)await loadCurationConversations();for(const group of curationGroups.values())await updateGroup(group);}
+  try{await loadCurationConversations(0);for(const group of curationGroups.values())await updateGroup(group);}
   finally{curationBusy=false;}
 }
 document.addEventListener('sc:refreshed',()=>loadCuration().catch(e=>notice(e.message)));

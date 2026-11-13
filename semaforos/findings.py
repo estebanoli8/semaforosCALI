@@ -5,6 +5,12 @@ from psycopg.types.json import Jsonb
 from .contracts import assertions
 from .files import canonical_hash
 
+# Keep history but omit findings supported only by superseded extractions.
+ACTIVE_FINDING = """(NOT EXISTS(SELECT 1 FROM finding_predictions fp JOIN runs r ON r.id=fp.run_id
+    JOIN jobs j ON j.id=r.job_id WHERE fp.finding_id=f.id AND j.payload ? 'superseded_by_review')
+    OR EXISTS(SELECT 1 FROM finding_predictions fp JOIN runs r ON r.id=fp.run_id
+    JOIN jobs j ON j.id=r.job_id WHERE fp.finding_id=f.id AND NOT (j.payload ? 'superseded_by_review')))"""
+
 
 def clean_quote(text):
     # Solo presentación; el texto íntegro permanece en literal y en el original.

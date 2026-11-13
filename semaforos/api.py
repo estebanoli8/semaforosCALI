@@ -343,7 +343,8 @@ def create_app(store=None, root=None, config=None, token=None):
     @private.get('/findings')
     def findings(conversation_id:UUID,offset:int=0,limit:int=50,unassigned:bool=False):
         if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
-        predicate='f.conversation_id=%s'
+        from .findings import ACTIVE_FINDING
+        predicate='f.conversation_id=%s AND '+ACTIVE_FINDING
         if unassigned:predicate+=" AND NOT EXISTS(SELECT 1 FROM report_findings rf JOIN reports r ON r.id=rf.report_id WHERE rf.finding_id=f.id AND r.revision<>'descartado')"
         with store.connect() as c:
             rows=c.execute('SELECT f.*,ARRAY(SELECT r.code FROM reports r JOIN report_findings rf ON rf.report_id=r.id WHERE rf.finding_id=f.id AND r.revision<>\'descartado\' ORDER BY r.code) AS report_codes FROM findings f WHERE '+predicate+' ORDER BY f.created_at,f.id LIMIT %s OFFSET %s',(conversation_id,limit,offset)).fetchall()
