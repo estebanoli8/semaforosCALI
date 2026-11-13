@@ -59,6 +59,12 @@ class Review(BaseModel):
     comment: str | None = Field(default=None,max_length=4000)
 
 
+class Curation(BaseModel):
+    decision: Literal['approved','corrected','not_evaluable']
+    reviewer: str = Field(min_length=1,max_length=100)
+    text: str | None = Field(default=None,max_length=100000)
+
+
 def compact_result(stage, output):
     """Resumen acotado para la tabla; la predicción completa sigue en /runs/{id}."""
     output=output if isinstance(output,dict) else {}
@@ -81,6 +87,56 @@ def create_app(store=None, root=None, config=None, token=None):
     app=FastAPI(title='Semáforos Cali · Núcleo privado',docs_url=None,redoc_url=None,openapi_url=None)
     private=APIRouter(dependencies=[Depends(auth)])
     uploads=Uploads(store,root)
+    @private.get('/curation/{conversation_id}')
+    def curation(conversation_id:UUID,offset:int=0):
+        if offset<0:raise HTTPException(400,'Offset inválido')
+        with store.connect() as c:
+            rows=c.execute('''SELECT j.id,j.stage,j.state,j.evidence_id,j.payload,e.original_name AS file_name,
+                e.modality,e.parent_id,e.metadata,r.id AS run_id,r.output,r.error_code,
+                (SELECT human_label FROM reviews WHERE run_id=r.id AND field='curation' ORDER BY created_at DESC LIMIT 1) AS review
+                FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+                LEFT JOIN LATERAL (SELECT * FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1) r ON true
+                WHERE e.conversation_id=%s ORDER BY e.created_at,j.created_at,j.id LIMIT 100 OFFSET %s''',
+                (conversation_id,offset)).fetchall()
+        from .messages import team_audio,is_team_sender
+        visible=[]
+        for row in rows:
+            if row['modality']=='audio' and team_audio(store,row['evidence_id']):continue
+            if row['stage']=='text':
+                mids=[s.get('message_id') for s in row['payload'].get('sources',[]) if s.get('message_id')]
+                if mids:
+                    with store.connect() as c:
+                        senders=c.execute('SELECT sender_visible FROM messages WHERE id=ANY(%s::uuid[])',(mids,)).fetchall()
+                    if any(is_team_sender(x['sender_visible']) for x in senders):continue
+                if row['payload'].get('transcription_run_id') and team_audio(store,row['evidence_id']):continue
+            visible.append(row)
+        return {'items':visible,'next_offset':offset+100 if len(rows)==100 else None}
+
+    @private.post('/runs/{run_id}/curation')
+    def save_curation(run_id:UUID,body:Curation):
+        with store.connect() as c:
+            r=c.execute("SELECT r.*,j.stage FROM runs r JOIN jobs j ON j.id=r.job_id WHERE r.id=%s AND r.state='completed'",(run_id,)).fetchone()
+        if not r:raise HTTPException(404,'Resultado no disponible')
+        if body.decision=='corrected' and (r['stage']!='audio' or body.text is None):
+            raise HTTPException(400,'La corrección literal requiere una transcripción')
+        from psycopg.types.json import Jsonb
+        from uuid import uuid4
+        label=body.model_dump()
+        label['dependent_extraction_requires_review']=body.decision=='corrected'
+        with store.connect() as c:
+            ident=uuid4()
+            c.execute('INSERT INTO reviews(id,run_id,field,human_label,reviewer) VALUES(%s,%s,%s,%s,%s)',
+                      (ident,run_id,'curation',Jsonb(label),body.reviewer))
+            if r['stage']=='audio' and body.decision!='not_evaluable':
+                reference=body.text if body.decision=='corrected' else r['output']['text']
+                c.execute('INSERT INTO evaluations(id,review_id,metrics) VALUES(%s,%s,%s)',
+                          (uuid4(),ident,Jsonb(wer(reference,r['output']['text']))))
+        return {'saved':True,'dependent_extraction_requires_review':label['dependent_extraction_requires_review']}
+
+    @app.get('/curation.js')
+    def curation_script():return FileResponse(Path(__file__).with_name('web')/'curation.js',media_type='text/javascript')
+    @app.get('/curation.css')
+    def curation_style():return FileResponse(Path(__file__).with_name('web')/'curation.css',media_type='text/css')
     @private.get('/health')
     def health():
         with store.connect() as c:c.execute('SELECT 1 FROM schema_migrations LIMIT 1')
@@ -312,7 +368,7 @@ def create_app(store=None, root=None, config=None, token=None):
         response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
-        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src blob:; media-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         return response
 
     # Carcasa sin datos: las operaciones y consultas requieren Bearer.
