@@ -416,7 +416,7 @@ def create_app(store=None, root=None, config=None, token=None):
         with store.connect() as c:
             conversations=c.execute('SELECT count(*) AS n FROM conversations').fetchone()['n']
             evidence=c.execute('SELECT count(*) AS n FROM evidence WHERE parent_id IS NULL').fetchone()['n']
-            states=c.execute('SELECT stage,state,count(*) AS n FROM jobs GROUP BY stage,state ORDER BY stage,state').fetchall()
+            states=c.execute("SELECT stage,state,count(*) AS n FROM jobs WHERE NOT (payload ? 'superseded_by_review') GROUP BY stage,state ORDER BY stage,state").fetchall()
             index_errors=c.execute("SELECT count(*) AS n FROM finding_indexes WHERE state='error'").fetchone()['n']
         return {'conversations':conversations,'original_files':evidence,'tasks':states,
                 'disk_free_bytes':shutil.disk_usage(root).free,'disk_reserve_bytes':uploads.reserve,'chunk_bytes':CHUNK_BYTES,'finding_index_errors':index_errors}

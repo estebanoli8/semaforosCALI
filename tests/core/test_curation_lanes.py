@@ -50,6 +50,32 @@ class CurationLanesTests(unittest.TestCase):
         with self.store.connect() as c:
             label=c.execute("SELECT human_label FROM reviews ORDER BY created_at DESC LIMIT 1").fetchone()['human_label']
             self.assertEqual(label['text'],'Quinta con cinco')
+        from semaforos.findings import index_run
+        source=claimed['payload']['sources'][0]
+        with self.store.connect() as c:
+            self.store.complete(c,claimed,{'result':{'extraction':{'summary':'Ubicación reportada',
+                'assertions':[{'source_id':source['id'],'variable':'ubicacion','literal':'Quinta con cinco','interpretation':None}]}},'metrics':{},'model_identity':{}})
+        index_run(self.store,claimed['run_id'])
+        with self.store.connect() as c:
+            finding=c.execute('SELECT literal,source_ref FROM findings').fetchone()
+            self.assertEqual(finding['literal'],'Quinta con cinco')
+            self.assertEqual(finding['source_ref']['transcription_review_id'],answer['review_id'])
+
+    def test_zip_filters_team_text_and_explicit_audio_but_keeps_unknown(self):
+        import zipfile
+        from semaforos.ingest import import_zip
+        archive=self.root/'fixture.zip'
+        with zipfile.ZipFile(archive,'w') as z:
+            z.writestr('_chat.txt','[01/11/26, 10:00] Esteban Oli: Gracias <attached: team.opus>\n'
+                '[01/11/26, 10:01] Vecina: Quinta con cinco apagado <attached: citizen.opus>\n')
+            for name in ('team.opus','citizen.opus','unknown.opus'):z.writestr(name,b'fixture')
+        import_zip(self.store,self.root,archive,self.config,'fixture')
+        with self.store.connect() as c:
+            rows=c.execute('SELECT j.stage,j.payload,e.original_name FROM jobs j JOIN evidence e ON e.id=j.evidence_id').fetchall()
+        self.assertNotIn('team.opus',[r['original_name'] for r in rows])
+        self.assertIn('citizen.opus',[r['original_name'] for r in rows]);self.assertIn('unknown.opus',[r['original_name'] for r in rows])
+        texts=[s['text'] for r in rows if r['stage']=='text' for s in r['payload']['sources']]
+        self.assertTrue(any('Quinta con cinco' in s for s in texts));self.assertFalse(any('Esteban Oli' in s for s in texts))
 
     def test_two_lanes_overlap_but_duplicate_lane_and_legacy_do_not(self):
         self.store.enqueue(self.eid,'audio','trial',self.config)

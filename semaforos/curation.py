@@ -39,6 +39,7 @@ def save(store, run_id, decision, reviewer, text=None):
                 (Jsonb({'superseded_by_review':str(ident)}),str(run_id)))
             origin='audio_video' if r['payload'].get('from_video') else 'audio_whatsapp'
             for sources in text_chunks(effective,run_id,origin):
+                for source in sources:source['transcription_review_id']=str(ident)
                 queued.append(str(store.enqueue(r['evidence_id'],'text',r['experiment_id'],r['config'],
                     {'sources':sources,'transcription_run_id':str(run_id),'transcription_review_id':str(ident)},connection=c)))
             # Prevent the original transcript from being expanded again after a correction.

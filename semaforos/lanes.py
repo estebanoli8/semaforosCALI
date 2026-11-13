@@ -2,6 +2,7 @@
 import sys
 import time
 import json
+import signal
 from .store import Store, LOCK_KEY
 from .config import storage_root
 from .uploads import Uploads
@@ -49,6 +50,9 @@ def once(store,root,lane,runner=None):
 
 
 def main():
+    def stop(signum,frame):raise SystemExit(0)
+    signal.signal(signal.SIGTERM,stop)
+    signal.signal(signal.SIGINT,stop)
     lane=sys.argv[1]
     if lane not in ('text','media'):raise SystemExit('invalid_lane')
     store=Store();root=storage_root()

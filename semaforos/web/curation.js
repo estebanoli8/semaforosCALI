@@ -17,7 +17,7 @@ $('jobsRows').closest('.tableScroll').hidden=true;$('jobPage').parentElement.hid
 $('modelResultsRows').closest('section').hidden=true;
 const reviewer=cnode('input');reviewer.placeholder='Nombre de quien revisa';reviewer.maxLength=100;reviewer.setAttribute('aria-label','Nombre de quien revisa');
 const curate=cnode('div');curate.id='curation';
-const moreConversations=button('Más conversaciones',()=>loadConversations());
+const moreConversations=button('Más conversaciones',()=>loadCurationConversations());
 processing.append(reviewer,button('Actualizar conversaciones',()=>loadCuration()),curate,moreConversations);
 processing.append(cnode('p','Aprobar valida esta salida del modelo; no certifica el daño físico. Los originales y las predicciones se conservan.'));
 for(const id of ['comparisonWorkspace','reviewWorkspace']){
@@ -94,7 +94,7 @@ async function updateGroup(group){
     }
   }finally{group.busy=false;}
 }
-async function loadConversations(){
+async function loadCurationConversations(){
   const epoch=curationEpoch,data=await api('/conversations?offset='+curationOffset+'&limit=10');if(epoch!==curationEpoch)return;
   curationOffset+=data.items.length;
   for(const conversation of data.items){
@@ -109,7 +109,7 @@ async function loadConversations(){
 }
 async function loadCuration(){
   if(curationBusy||!token)return;curationBusy=true;
-  try{if(!curationGroups.size)await loadConversations();for(const group of curationGroups.values())await updateGroup(group);}
+  try{if(!curationGroups.size)await loadCurationConversations();for(const group of curationGroups.values())await updateGroup(group);}
   finally{curationBusy=false;}
 }
 document.addEventListener('sc:refreshed',()=>loadCuration().catch(e=>notice(e.message)));

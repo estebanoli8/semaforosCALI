@@ -46,6 +46,11 @@ def index_run(store, run_id):
                 transcript=c.execute('SELECT * FROM transcripts WHERE run_id=%s AND evidence_id=%s',(row['payload'].get('transcription_run_id'),row['evidence_id'])).fetchone()
                 if not transcript:raise ValueError('transcript_source_missing')
                 tid=transcript['id'];full=transcript['literal_text'];basis=str(tid)
+                if row['payload'].get('transcription_review_id'):
+                    review=c.execute("""SELECT human_label FROM reviews WHERE id=%s AND run_id=%s
+                        AND field='curation'""",(row['payload']['transcription_review_id'],transcript['run_id'])).fetchone()
+                    if not review or review['human_label'].get('decision')!='corrected':raise ValueError('correction_source_missing')
+                    full=review['human_label']['text'];basis=str(tid)+':review:'+row['payload']['transcription_review_id']
                 # Solo referencias explícitas; un video puede ser padre del audio.
                 linked=c.execute('''WITH RECURSIVE parents AS (
                     SELECT id,parent_id FROM evidence WHERE id=%s UNION ALL
@@ -70,6 +75,7 @@ def index_pending(store, conversation_id=None):
         rows=c.execute("""SELECT r.id FROM runs r JOIN jobs j ON j.id=r.job_id
             JOIN evidence e ON e.id=j.evidence_id
             WHERE r.state='completed' AND j.stage='text' AND NOT EXISTS(SELECT 1 FROM finding_indexes f WHERE f.run_id=r.id)
+            AND NOT (j.payload ? 'superseded_by_review')
             AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
             ORDER BY r.finished_at,r.id LIMIT 10""",(conversation_id,conversation_id)).fetchall()
     for row in rows:

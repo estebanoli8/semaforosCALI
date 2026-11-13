@@ -1,5 +1,7 @@
 # Despliegue del núcleo en Easypanel
 
+Para la interfaz de curaduría y activación de dos carriles, seguir [Curaduría y rendimiento](curaduria_rendimiento.md). La configuración de un solo trabajador descrita abajo sigue siendo compatible si `SC_PARALLEL` no está activado.
+
 El despliegue inicial usa un solo servicio de aplicación con `SC_PROCESS=all`.
 La API privada y el trabajador comparten el mismo volumen de evidencias, mientras
 PostgreSQL y Ollama permanecen como servicios independientes del proyecto

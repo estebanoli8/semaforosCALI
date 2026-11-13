@@ -5,4 +5,4 @@
 .curationCard audio{width:100%;max-width:340px}.curationCard button{margin:4px}
 .curationCard textarea{width:100%;min-height:160px}summary{cursor:pointer;padding:12px;font-weight:600}
 .curationConversation{border-top:1px solid #d9e4dd;margin-top:16px}.curationCard progress{width:100%}
-.curationCard .jobProgress small{display:block}.curationCard img:not([src]){display:none}
+.curationCard .jobProgress small{display:block}.curationCard img:not([src]){min-height:120px;min-width:160px;background:#f0f5f2}
