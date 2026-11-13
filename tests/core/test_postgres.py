@@ -81,6 +81,26 @@ class PostgresTests(unittest.TestCase):
         self.assertFalse(once(self.store,self.root,runner=broken))
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT state FROM jobs').fetchone()['state'],'failed')
 
+    def test_job_origin_and_annotated_image_are_private(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        self.store.enqueue(self.eid,'detect','visual',self.config)
+        def synthetic_image(store,connection,job,root):
+            artifact=root/'runs'/str(job['run_id'])/'artifacts'/'anotada.jpg'
+            artifact.parent.mkdir(parents=True,exist_ok=True)
+            artifact.write_bytes(b'fake jpeg for private endpoint')
+            return {'result':{'annotation':str(artifact),'objects':[],'width':1,'height':1},
+                    'metrics':{},'model_identity':{'test_double':True}}
+        self.assertTrue(once(self.store,self.root,runner=synthetic_image))
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32));auth={'Authorization':'Bearer '+'x'*32}
+        job=client.get('/jobs',headers=auth).json()['items'][0]
+        self.assertEqual(job['file_name'],'audio.ogg')
+        self.assertEqual(job['conversation_name'],'Conversación ficticia')
+        path='/runs/'+job['run_id']+'/annotated'
+        self.assertEqual(client.get(path).status_code,401)
+        self.assertEqual(client.get(path,headers=auth).content,b'fake jpeg for private endpoint')
+        client.close()
+
     def test_zip_literal_content_duplicate_and_path_escape(self):
         path=self.root/'WhatsApp Chat - Ejemplo.zip'
         text='[01/11/26, 10:00:00] Vecino: Quinta con quinta, apagado.\n'

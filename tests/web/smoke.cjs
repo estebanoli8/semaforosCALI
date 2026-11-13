@@ -6,12 +6,12 @@ const {mkdirSync}=require('node:fs');
 const {chromium}=require('playwright');
 const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--directory','semaforos/web'],{stdio:'ignore'});
 (async()=>{
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch({headless:true,...(process.env.SC_CHROMIUM_PATH?{executablePath:process.env.SC_CHROMIUM_PATH}:{})});
   try{
     const page=await browser.newPage({viewport:{width:1440,height:1100}});
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
-    let report=null,relation=null;
+    let report=null,relation=null,showSyntheticJob=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
@@ -21,14 +21,19 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       if(path==='/favicon.ico')return route.fulfill({status:204});
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
-      if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
+      if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:showSyntheticJob?[{stage:'detect',state:'completed',n:1},{stage:'text',state:'running',n:1}]:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
       else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
       else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
       else if(path==='/export-relations'&&request.method()==='GET')result={total:relation?1:0,version:relation?1:0,items:relation?[relation]:[]};
       else if(path==='/export-relations'&&request.method()==='POST'){
         const body=request.postDataJSON();assert.equal(body.expected_version,0);assert.equal(body.decision,'misma_conversacion');assert.ok(body.request_id);relation={...body,version:1};result=relation;
       }
-      else if(path==='/jobs')result={total:0,items:[]};
+      else if(path==='/jobs')result=showSyntheticJob?{total:2,items:[
+        {id:'job-frame',stage:'detect',state:'completed',attempts:1,run_id:'run-frame',file_name:'frame-01.jpg',parent_name:'video-sintetico.mp4',conversation_name:'Chat sintético.zip',modality:'frame',evidence_metadata:{segundo:2},experiment_id:'synthetic'},
+        {id:'job-text',stage:'text',state:'running',attempts:1,run_id:'run-text',file_name:'_chat.txt',conversation_name:'Chat sintético.zip',modality:'chat',progress:{phase:'Generando JSON',preview:'{"summary":"Quinta con 5"'},experiment_id:'synthetic'}]}:{total:0,items:[]};
+      else if(path==='/runs/run-frame/annotated')return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lV0AAAAASUVORK5CYII=','base64')});
+      else if(path==='/runs/run-frame')result={id:'run-frame',state:'completed',output:{objects:[{bbox:[1,2,3,4]}]}};
+      else if(path==='/runs/run-text')result={id:'run-text',state:'running',output:null};
       else if(path==='/conversations')result={total:1,items:[{id:'conversation-synthetic',original_name:'Conversación sintética'}]};
       else if(path==='/report-proposals')result={total:1,items:[{status:'candidato_revisable',reasons:[],findings:[finding],primary_finding_id:finding.id,existing_reports:[],related_reports:[]}]};
       else if(path==='/findings')result={total:1,items:[finding]};
@@ -67,6 +72,16 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#upload').click();
     await page.waitForFunction(()=>!document.getElementById('upload').disabled);
     assert.equal(session.state,'queued');assert.equal(replays,1);assert.equal(chunks,3);
+    showSyntheticJob=true;await page.evaluate(()=>refresh());
+    assert.match(await page.locator('#overallStatus').textContent(),/1 de 2 tareas conocidas/);
+    assert.equal(await page.locator('#overallProgress').getAttribute('value'),'50');
+    assert.match(await page.locator('#jobsRows').textContent(),/video-sintetico.mp4 · segundo 2/);
+    await page.getByRole('button',{name:'Ver salida'}).click();
+    await page.locator('#annotatedImage').waitFor({state:'visible'});
+    await page.getByRole('button',{name:'Cerrar',exact:true}).click();
+    await page.getByRole('button',{name:'Ver avance'}).click();
+    assert.match(await page.locator('#modelText').textContent(),/Quinta con 5/);
+    await page.getByRole('button',{name:'Cerrar',exact:true}).click();
     await page.locator('#loadReview').click();
     await page.locator('#reviewConversation').selectOption('conversation-synthetic');
     await page.locator('#loadProposals').click();

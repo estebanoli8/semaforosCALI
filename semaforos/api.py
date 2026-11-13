@@ -1,5 +1,6 @@
 """API privada de procesamiento/revisión. No es aún el portal ciudadano."""
 import hmac
+import json
 import os
 from uuid import UUID
 from typing import Literal
@@ -77,8 +78,22 @@ def create_app(store=None, root=None, config=None, token=None):
     def jobs(offset:int=0,limit:int=50):
         if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
         with store.connect() as c:
-            rows=c.execute('SELECT j.id,j.evidence_id,j.stage,j.experiment_id,j.state,j.attempts,j.created_at,j.expanded_at,j.expansion_error,(SELECT r.id FROM runs r WHERE r.job_id=j.id ORDER BY r.attempt DESC LIMIT 1) AS run_id FROM jobs j ORDER BY j.created_at DESC,j.id LIMIT %s OFFSET %s',(limit,offset)).fetchall()
+            rows=c.execute('''SELECT j.id,j.evidence_id,j.stage,j.experiment_id,j.state,j.attempts,
+                j.created_at,j.expanded_at,j.expansion_error,r.id AS run_id,r.error_code AS run_error_code,
+                e.original_name AS file_name,e.modality,e.metadata AS evidence_metadata,
+                parent.original_name AS parent_name,v.original_name AS conversation_name
+                FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+                JOIN conversations v ON v.id=e.conversation_id
+                LEFT JOIN evidence parent ON parent.id=e.parent_id
+                LEFT JOIN LATERAL (SELECT id,error_code FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1) r ON true
+                ORDER BY j.created_at DESC,j.id LIMIT %s OFFSET %s''',(limit,offset)).fetchall()
             total=c.execute('SELECT count(*) AS n FROM jobs').fetchone()['n']
+        for row in rows:
+            if row['state']=='running' and row['run_id']:
+                path=contained(root,f"runs/{row['run_id']}/progress.json")
+                try:
+                    if path.stat().st_size<=8192:row['progress']=json.loads(path.read_text())
+                except (OSError,ValueError):pass
         return {'total':total,'items':rows}
     @private.post('/jobs')
     def enqueue(body:Enqueue):
@@ -96,6 +111,20 @@ def create_app(store=None, root=None, config=None, token=None):
         with store.connect() as c:r=c.execute('SELECT * FROM runs WHERE id=%s',(run_id,)).fetchone()
         if not r:raise HTTPException(404,'Ejecución no encontrada')
         return r
+
+    @private.get('/runs/{run_id}/annotated')
+    def annotated(run_id:UUID):
+        with store.connect() as c:
+            row=c.execute('''SELECT r.output FROM runs r JOIN jobs j ON j.id=r.job_id
+                WHERE r.id=%s AND r.state='completed' AND j.stage='detect' ''',(run_id,)).fetchone()
+        if not row:raise HTTPException(404,'Anotación no disponible')
+        try:
+            relative=Path(row['output']['annotation']).resolve().relative_to(root.resolve())
+            path=contained(root,str(relative))
+        except (KeyError,ValueError):raise HTTPException(404,'Anotación no disponible')
+        if not path.is_file() or path.suffix.lower() not in ('.jpg','.jpeg'):
+            raise HTTPException(404,'Anotación no disponible')
+        return FileResponse(path,media_type='image/jpeg',content_disposition_type='inline')
     @private.get('/evidence/{evidence_id}/chat-parses')
     def chat_parses(evidence_id:UUID):
         with store.connect() as c:
@@ -247,7 +276,7 @@ def create_app(store=None, root=None, config=None, token=None):
         response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
-        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         return response
 
     # Carcasa sin datos: las operaciones y consultas requieren Bearer.

@@ -9,6 +9,12 @@ from .files import atomic_json, contained, sha256
 from .store import LOCK_KEY, Store
 
 
+class AdapterFailure(Exception):
+    def __init__(self, code):
+        self.error_code=code if isinstance(code,str) and code.isidentifier() and len(code)<=100 else 'adapter_failed'
+        super().__init__(self.error_code)
+
+
 def text_chunks(text, source_id, origin):
     # Los fragmentos se conservan completos en cada salida; no generan reportes por sí solos.
     for offset in range(0,len(text),2400):
@@ -69,7 +75,7 @@ def once(store, root, runner=None):
                 output=(runner or execute_child)(store,c,job,root)
                 store.complete(c,job,output)
             except Exception as exc:
-                store.fail(c,job,type(exc).__name__)
+                store.fail(c,job,getattr(exc,'error_code',type(exc).__name__))
             expand(store,root)
             index_pending(store)
             return True
@@ -94,7 +100,10 @@ def execute_child(store,c,job,root):
                 if time.monotonic()>deadline:raise TimeoutError('inference_timeout')
                 try:process.wait(timeout=5)
                 except subprocess.TimeoutExpired:pass
-            if process.returncode:raise RuntimeError('adapter_failed')
+            if process.returncode:
+                try:code=json.loads(result_file.read_text()).get('error_code')
+                except (OSError,ValueError,AttributeError):code='adapter_failed'
+                raise AdapterFailure(code)
             output=json.loads(result_file.read_text())
             if set(('result','metrics','model_identity'))-output.keys():raise ValueError('invalid_adapter_output')
             return output
