@@ -46,7 +46,11 @@ def execute(spec):
     progress(phase='Iniciando')
     if stage=='audio':
         from .adapters.audio import transcribe
-        result,identity=transcribe(path,config,os.getenv('SC_MODELS_DIR','/models'),on_progress=progress)
+        from .preprocess import mono_audio
+        progress(phase='Preparando audio mono / 16 kHz')
+        prepared=mono_audio(root,path,spec['sha256'])
+        result,identity=transcribe(prepared,config,os.getenv('SC_MODELS_DIR','/models'),on_progress=progress)
+        identity['preprocessing']='audio-v1-mono-16000-pcm16'
     elif stage=='detect':
         from .adapters.vision import detect
         progress(phase='Analizando imagen')

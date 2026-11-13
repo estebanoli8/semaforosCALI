@@ -9,7 +9,7 @@ from .worker import expand, execute_child
 from .findings import index_pending
 
 
-def once(store,root,lane):
+def once(store,root,lane,runner=None):
     key=LOCK_KEY+(10 if lane=='text' else 11)
     stages=['text','lights'] if lane=='text' else ['audio','detect','video']
     with store.connect() as c:
@@ -29,6 +29,8 @@ def once(store,root,lane):
                         expand(store,root);index_pending(store)
                         candidate=maintenance.execute("""SELECT id FROM jobs WHERE stage=ANY(%s)
                             AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now()))
+                            AND (attempts<max_attempts OR state='running')
+                            AND NOT (payload ? 'superseded_by_review')
                             ORDER BY created_at LIMIT 1""",(stages,)).fetchone()
                         maintenance.commit()
                     finally:
@@ -37,7 +39,7 @@ def once(store,root,lane):
                 job=store.claim(c,job_id=candidate['id'])
                 if not job:return False
                 print(json.dumps({'lane':lane,'stage':job['stage'],'event':'started','job_id':str(job['id'])}),flush=True)
-                try:store.complete(c,job,execute_child(store,c,job,root))
+                try:store.complete(c,job,(runner or execute_child)(store,c,job,root))
                 except Exception as exc:store.fail(c,job,getattr(exc,'error_code',type(exc).__name__))
                 return True
             finally:

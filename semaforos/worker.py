@@ -35,9 +35,17 @@ def expand(store, root, conversation_id=None):
         try:
             result=job['output'];config=job['config'];experiment=job['experiment_id']
             if job['stage']=='audio':
+                from .messages import team_audio
+                if team_audio(store,job['evidence_id']):
+                    with store.connect() as c:c.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(job['id'],))
+                    continue
                 origin='audio_video' if job['payload'].get('from_video') else 'audio_whatsapp'
-                for sources in text_chunks(result['text'],job['run_id'],origin):
-                    store.enqueue(job['evidence_id'],'text',experiment,config,{'sources':sources,'transcription_run_id':str(job['run_id'])})
+                with store.connect() as c:
+                    current=c.execute('SELECT expanded_at FROM jobs WHERE id=%s FOR UPDATE',(job['id'],)).fetchone()
+                    if current['expanded_at'] is not None:continue
+                    for sources in text_chunks(result['text'],job['run_id'],origin):
+                        store.enqueue(job['evidence_id'],'text',experiment,config,{'sources':sources,'transcription_run_id':str(job['run_id'])},connection=c)
+                    c.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(job['id'],))
             elif job['stage']=='detect':
                 with store.connect() as c:
                     detections=c.execute('SELECT id,bbox FROM detections WHERE run_id=%s ORDER BY object_index',(job['run_id'],)).fetchall()

@@ -11,13 +11,13 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const page=await browser.newPage({viewport:{width:1440,height:1100}});
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
-    let report=null,relation=null,showSyntheticJob=false;
+    let report=null,relation=null,showSyntheticJob=false,curationLabel=null;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
     await page.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
-      if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js'].includes(path))return route.continue();
+      if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
@@ -31,10 +31,18 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       else if(path==='/jobs')result=showSyntheticJob?{total:2,items:[
         {id:'job-frame',stage:'detect',state:'completed',attempts:1,run_id:'run-frame',file_name:'frame-01.jpg',parent_name:'video-sintetico.mp4',conversation_name:'Chat sintético.zip',modality:'frame',evidence_metadata:{segundo:2},experiment_id:'synthetic'},
         {id:'job-text',stage:'text',state:'running',attempts:1,run_id:'run-text',file_name:'_chat.txt',conversation_name:'Chat sintético.zip',modality:'chat',progress:{phase:'Generando JSON',preview:'{"summary":"Quinta con 5"'},experiment_id:'synthetic'}]}:{total:0,items:[]};
-      else if(path==='/runs/run-frame/annotated')return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lV0AAAAASUVORK5CYII=','base64')});
+      else if(['/runs/run-frame/annotated','/runs/run-frame/thumbnail'].includes(path))return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lV0AAAAASUVORK5CYII=','base64')});
       else if(path==='/runs/run-frame')result={id:'run-frame',state:'completed',output:{objects:[{bbox:[1,2,3,4]}]}};
       else if(path==='/runs/run-text')result={id:'run-text',state:'running',output:null};
       else if(path==='/conversations')result={total:1,items:[{id:'conversation-synthetic',original_name:'Conversación sintética'}]};
+      else if(path==='/curation/conversation-synthetic')result={next_offset:null,items:[
+        {id:'job-frame',stage:'detect',state:'completed',run_id:'run-frame',file_name:'frame-01.jpg',parent_id:'video-synthetic',parent_name:'video-sintetico.mp4',modality:'frame',metadata:{segundo:2},payload:{},output:{objects:[{bbox:[1,2,3,4],score:0.9}]}},
+        {id:'job-audio',stage:'audio',state:'completed',run_id:'run-audio',file_name:'audio.ogg',evidence_id:'audio-synthetic',modality:'audio',payload:{},output:{text:'Quinta con seis'},review:curationLabel},
+        {id:'job-text',stage:'text',state:'running',run_id:'run-text',file_name:'_chat.txt',modality:'chat',payload:{sources:[{text:'Quinta con 5'}]},progress:{phase:'Generando JSON',preview:'Quinta con 5'}}]};
+      else if(path==='/runs/run-audio/curation'){
+        curationLabel=request.postDataJSON();assert.equal(curationLabel.reviewer,'Revisora de prueba');
+        result={saved:true,job_ids:curationLabel.decision==='corrected'?['corrected-text']:[]};
+      }
       else if(path==='/report-proposals')result={total:1,items:[{status:'candidato_revisable',reasons:[],findings:[finding],primary_finding_id:finding.id,existing_reports:[],related_reports:[]}]};
       else if(path==='/findings')result={total:1,items:[finding]};
       else if(path==='/reports'&&request.method()==='GET')result={total:report?1:0,active:report?1:0,items:report?[report]:[]};
@@ -76,12 +84,28 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.match(await page.locator('#overallStatus').textContent(),/1 de 2 tareas conocidas/);
     assert.equal(await page.locator('#overallProgress').getAttribute('value'),'50');
     assert.match(await page.locator('#jobsRows').textContent(),/video-sintetico.mp4 · segundo 2/);
-    await page.getByRole('button',{name:'Ver salida'}).click();
+    await page.locator('#curation > details > summary').click();
+    await page.getByText('Video: video-sintetico.mp4 · fotogramas y audio',{exact:true}).click();
+    await page.locator('.curationImage').scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>document.querySelector('.curationImage')?.src.startsWith('blob:'));
+    assert.equal(await page.locator('video').count(),0);
+    await page.getByRole('button',{name:'Ampliar imagen'}).click();
     await page.locator('#annotatedImage').waitFor({state:'visible'});
     await page.getByRole('button',{name:'Cerrar',exact:true}).click();
-    await page.getByRole('button',{name:'Ver avance'}).click();
+    await page.locator('[data-job-id="job-text"]').getByRole('button',{name:'Salida del modelo'}).click();
     assert.match(await page.locator('#modelText').textContent(),/Quinta con 5/);
     await page.getByRole('button',{name:'Cerrar',exact:true}).click();
+    await page.getByLabel('Nombre de quien revisa',{exact:true}).fill('Revisora de prueba');
+    const audioCard=page.locator('[data-job-id="job-audio"]');
+    await audioCard.getByText('Corregir transcripción',{exact:true}).click();
+    await page.getByLabel('Transcripción corregida').fill('Quinta con cinco');
+    await page.evaluate(()=>refresh());
+    assert.equal(await page.getByLabel('Transcripción corregida').inputValue(),'Quinta con cinco');
+    await audioCard.getByRole('button',{name:'1,5×',exact:true}).click();
+    assert.equal(await audioCard.locator('audio').evaluate(a=>a.playbackRate),1.5);
+    await audioCard.getByRole('button',{name:'Guardar corrección y aprobar'}).click();
+    assert.equal(curationLabel.text,'Quinta con cinco');assert.equal(curationLabel.decision,'corrected');
+    await page.getByText('Organizar reportes',{exact:true}).click();
     await page.locator('#loadReview').click();
     await page.locator('#reviewConversation').selectOption('conversation-synthetic');
     await page.locator('#loadProposals').click();
@@ -96,6 +120,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#reportDetailBox').waitFor({state:'visible'});
     assert.equal(report.revision,'pendiente');assert.deepEqual(report.findings,[finding]);
     assert.match(await page.locator('#reportTitle').textContent(),/R-000001/);
+    await page.getByText('Versiones de conversaciones',{exact:true}).click();
     await page.locator('#loadExports').click();
     await page.locator('#leftExport').selectOption('parse-a');await page.locator('#rightExport').selectOption('parse-b');
     await page.locator('#compareExports').click();await page.waitForFunction(()=>!document.getElementById('saveRelation').disabled);

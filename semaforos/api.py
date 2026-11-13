@@ -92,9 +92,11 @@ def create_app(store=None, root=None, config=None, token=None):
         if offset<0:raise HTTPException(400,'Offset inválido')
         with store.connect() as c:
             rows=c.execute('''SELECT j.id,j.stage,j.state,j.evidence_id,j.payload,e.original_name AS file_name,
-                e.modality,e.parent_id,e.metadata,r.id AS run_id,r.output,r.error_code,
+                e.modality,e.parent_id,e.metadata,parent.original_name AS parent_name,
+                j.experiment_id,r.id AS run_id,r.output,r.error_code AS run_error_code,r.started_at,
                 (SELECT human_label FROM reviews WHERE run_id=r.id AND field='curation' ORDER BY created_at DESC LIMIT 1) AS review
                 FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+                LEFT JOIN evidence parent ON parent.id=e.parent_id
                 LEFT JOIN LATERAL (SELECT * FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1) r ON true
                 WHERE e.conversation_id=%s ORDER BY e.created_at,j.created_at,j.id LIMIT 100 OFFSET %s''',
                 (conversation_id,offset)).fetchall()
@@ -107,31 +109,24 @@ def create_app(store=None, root=None, config=None, token=None):
                 if mids:
                     with store.connect() as c:
                         senders=c.execute('SELECT sender_visible FROM messages WHERE id=ANY(%s::uuid[])',(mids,)).fetchall()
-                    if any(is_team_sender(x['sender_visible']) for x in senders):continue
+                    if senders and all(is_team_sender(x['sender_visible']) for x in senders):continue
+                    if any(is_team_sender(x['sender_visible']) for x in senders):
+                        # Older mixed chunks must not expose team text or silently drop citizens.
+                        row['output']=None;row['payload']={'legacy_mixed_senders':True}
                 if row['payload'].get('transcription_run_id') and team_audio(store,row['evidence_id']):continue
+            if row['state']=='running' and row['run_id']:
+                path=contained(root,f"runs/{row['run_id']}/progress.json")
+                try:
+                    if path.stat().st_size<=8192:row['progress']=json.loads(path.read_text())
+                except (OSError,ValueError):pass
             visible.append(row)
         return {'items':visible,'next_offset':offset+100 if len(rows)==100 else None}
 
     @private.post('/runs/{run_id}/curation')
     def save_curation(run_id:UUID,body:Curation):
-        with store.connect() as c:
-            r=c.execute("SELECT r.*,j.stage FROM runs r JOIN jobs j ON j.id=r.job_id WHERE r.id=%s AND r.state='completed'",(run_id,)).fetchone()
-        if not r:raise HTTPException(404,'Resultado no disponible')
-        if body.decision=='corrected' and (r['stage']!='audio' or body.text is None):
-            raise HTTPException(400,'La corrección literal requiere una transcripción')
-        from psycopg.types.json import Jsonb
-        from uuid import uuid4
-        label=body.model_dump()
-        label['dependent_extraction_requires_review']=body.decision=='corrected'
-        with store.connect() as c:
-            ident=uuid4()
-            c.execute('INSERT INTO reviews(id,run_id,field,human_label,reviewer) VALUES(%s,%s,%s,%s,%s)',
-                      (ident,run_id,'curation',Jsonb(label),body.reviewer))
-            if r['stage']=='audio' and body.decision!='not_evaluable':
-                reference=body.text if body.decision=='corrected' else r['output']['text']
-                c.execute('INSERT INTO evaluations(id,review_id,metrics) VALUES(%s,%s,%s)',
-                          (uuid4(),ident,Jsonb(wer(reference,r['output']['text']))))
-        return {'saved':True,'dependent_extraction_requires_review':label['dependent_extraction_requires_review']}
+        from .curation import save
+        try:return save(store,run_id,body.decision,body.reviewer,body.text)
+        except ValueError as exc:raise HTTPException(409,str(exc))
 
     @app.get('/curation.js')
     def curation_script():return FileResponse(Path(__file__).with_name('web')/'curation.js',media_type='text/javascript')
@@ -168,6 +163,9 @@ def create_app(store=None, root=None, config=None, token=None):
     def enqueue(body:Enqueue):
         with store.connect() as c:e=c.execute('SELECT * FROM evidence WHERE id=%s',(body.evidence_id,)).fetchone()
         if not e:raise HTTPException(404,'Evidencia no encontrada')
+        from .messages import team_audio
+        if e['modality']=='audio' and team_audio(store,e['id']):
+            raise HTTPException(409,'Audio del equipo excluido del procesamiento')
         stage={'image':'detect','frame':'detect','audio':'audio','video':'video'}.get(e['modality'])
         if stage:return {'job_ids':[str(store.enqueue(e['id'],stage,body.experiment_id,config))]}
         if e['modality']=='chat':
@@ -203,6 +201,37 @@ def create_app(store=None, root=None, config=None, token=None):
         for row in rows:
             row['output_summary']=compact_result(row['stage'],row.pop('output',None))
         return {'total':total,'items':rows}
+
+    @private.get('/runs/{run_id}/thumbnail')
+    def thumbnail(run_id:UUID):
+        original=annotated(run_id)
+        path=contained(root,f'runs/{run_id}/thumbnail-v1.jpg')
+        if not path.is_file():
+            from PIL import Image
+            import tempfile
+            with Image.open(original.path) as source:
+                source.thumbnail((480,320))
+                with tempfile.NamedTemporaryFile(dir=path.parent,suffix='.jpg',delete=False) as tmp:
+                    name=tmp.name
+                try:
+                    source.convert('RGB').save(name,format='JPEG',quality=80)
+                    os.replace(name,path)
+                finally:Path(name).unlink(missing_ok=True)
+        return FileResponse(path,media_type='image/jpeg')
+
+    @private.get('/evidence/{ident}/audio')
+    def playable_audio(ident:UUID):
+        with store.connect() as c:
+            row=c.execute("SELECT * FROM evidence WHERE id=%s AND modality='audio'",(ident,)).fetchone()
+        if not row:raise HTTPException(404,'Audio no encontrado')
+        from .messages import team_audio
+        if team_audio(store,ident):raise HTTPException(404,'Audio del equipo excluido')
+        cached=contained(root,'derived/audio-v1/'+row['sha256']+'/mono-16000.wav')
+        path=cached if cached.is_file() else contained(root,row['storage_path'])
+        if not path.is_file():raise HTTPException(404,'Audio no disponible')
+        import mimetypes
+        media=mimetypes.guess_type(path.name)[0] or 'audio/ogg'
+        return FileResponse(path,media_type=media,content_disposition_type='inline')
 
     @private.get('/runs/{run_id}/annotated')
     def annotated(run_id:UUID):

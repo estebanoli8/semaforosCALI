@@ -141,6 +141,7 @@ async function refresh(){
     $('previous'+name).disabled=offset===0;$('next'+name).disabled=offset+pageSize>=total;
     $(name==='Uploads'?'uploadPage':'jobPage').textContent=total?`${offset+1}–${Math.min(offset+pageSize,total)} de ${total}`:'0 registros';
   }
+  document.dispatchEvent(new Event('sc:refreshed'));
 }
 async function candidates(){
   const items=[];
