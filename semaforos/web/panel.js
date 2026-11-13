@@ -5,6 +5,7 @@ const states={receiving:'Recibiendo',queued:'En cola de importación',importing:
 const stages={audio:'Audio → texto',detect:'Detección de semáforos',lights:'Lectura de luces',text:'Extracción de texto',video:'Preparación de video'};
 let token='',timer=null,busy=false,pause=false,uploadOffset=0,jobOffset=0,uploadTotal=0,jobTotal=0,chunkSize=4194304;
 let selectedJobId=null,selectedState=null,annotationUrl=null;
+let modelResultOffset=0,modelResultTotal=0;
 const pageSize=25;
 function notice(text){$('notice').textContent=text;}
 function size(n){return (n/1024**3).toFixed(2)+' GiB';}
@@ -73,6 +74,32 @@ async function showRun(item){
   }
   if(item.stage==='lights')$('modelText').textContent=(run.output?.objects||[]).map(x=>JSON.stringify(x)).join('\n')||'No hubo luces evaluables.';
 }
+function resultVariables(item){
+  const output=item.output_summary||{};
+  if(item.stage==='audio')return 'Transcripción: '+String(output.text||'Sin habla').slice(0,400);
+  if(item.stage==='detect')return (output.objects||[]).map((x,i)=>`Semáforo ${i+1}: bbox ${JSON.stringify(x.bbox)} · confianza ${Number(x.score||0).toFixed(3)}`).join('\n')||'Sin semáforos detectados';
+  if(item.stage==='lights')return (output.objects||[]).map((x,i)=>`Semáforo ${i+1}: rojo=${x.red} · amarillo=${x.yellow} · verde=${x.green} · ${x.reason||x.reading_state}`).join('\n')||'Sin lecturas';
+  if(item.stage==='text'){
+    const extraction=output.extraction||output;
+    return ['Resumen: '+(extraction.summary||'Sin resumen'),...(extraction.assertions||[]).map(x=>`${x.variable}: ${x.literal}`)].join('\n');
+  }
+  if(item.stage==='video')return `${output.frame_count||0} fotogramas · ${output.has_audio?'audio extraído':'sin audio'}`;
+  return 'Salida disponible';
+}
+async function loadModelResults(){
+  const data=await api('/model-results?offset='+modelResultOffset+'&limit='+pageSize);
+  modelResultTotal=data.total;$('modelResultsRows').replaceChildren();
+  for(const item of data.items){
+    const identity=item.model_identity||{};
+    const source=document.createElement('div');source.textContent=item.conversation_name;
+    const file=document.createElement('small');file.textContent=`${item.file_name} · ${item.modality}`;source.append(file);
+    const detail=button('Ver salida',()=>showRun({...item,id:item.job_id,state:'completed',run_id:item.run_id}));
+    row($('modelResultsRows'),[source,`${stages[item.stage]||item.stage}\n${identity.model||identity.provider||'modelo local'}\n${item.experiment_id}`,resultVariables(item),item.finished_at?new Date(item.finished_at).toLocaleString('es-CO',{timeZone:'America/Bogota'}):'—',item.review_count?'Revisado ('+item.review_count+')':'Pendiente',detail]);
+  }
+  if(!data.items.length)row($('modelResultsRows'),['Aún no hay ejecuciones completadas.','','','','','']);
+  $('modelResultsPage').textContent=modelResultTotal?`${modelResultOffset+1}–${Math.min(modelResultOffset+pageSize,modelResultTotal)} de ${modelResultTotal}`:'0 resultados';
+  $('previousModelResults').disabled=modelResultOffset===0;$('nextModelResults').disabled=modelResultOffset+pageSize>=modelResultTotal;
+}
 async function refresh(){
   if(!token)return;
   const [summary,uploads,jobs]=await Promise.all([api('/summary'),api('/uploads?offset='+uploadOffset+'&limit='+pageSize),api('/jobs?offset='+jobOffset+'&limit='+pageSize)]);
@@ -126,6 +153,9 @@ $('loginForm').onsubmit=async event=>{event.preventDefault();token=$('token').va
 $('logout').onclick=()=>{document.dispatchEvent(new Event('sc:logout'));pause=true;token='';clearInterval(timer);clearAnnotation();selectedJobId=null;$('workspace').hidden=true;$('login').hidden=false;$('result').textContent='';$('modelText').textContent='';$('resultBox').hidden=true;notice('Sesión cerrada. Las tareas ya en cola continúan en el servidor.');};
 $('pause').onclick=()=>{pause=true;$('uploadStatus').textContent='Pausando al terminar el bloque actual…';};
 $('closeResult').onclick=()=>{selectedJobId=null;selectedState=null;clearAnnotation();$('resultBox').hidden=true;};
+$('loadResults').onclick=()=>loadModelResults().catch(e=>notice(e.message));
+$('previousModelResults').onclick=()=>{modelResultOffset=Math.max(0,modelResultOffset-pageSize);loadModelResults().catch(e=>notice(e.message));};
+$('nextModelResults').onclick=()=>{modelResultOffset+=pageSize;loadModelResults().catch(e=>notice(e.message));};
 $('upload').onclick=async()=>{
   if(busy)return;
   const files=[...$('files').files],experiment=$('experiment').value.trim();

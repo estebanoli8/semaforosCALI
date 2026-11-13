@@ -59,6 +59,19 @@ class Review(BaseModel):
     comment: str | None = Field(default=None,max_length=4000)
 
 
+def compact_result(stage, output):
+    """Resumen acotado para la tabla; la predicción completa sigue en /runs/{id}."""
+    output=output if isinstance(output,dict) else {}
+    if stage=='audio':return {'text':str(output.get('text') or '')[:500]}
+    if stage in ('detect','lights'):return {'objects':list(output.get('objects') or [])[:50]}
+    if stage=='text':
+        extraction=output.get('extraction') if isinstance(output.get('extraction'),dict) else output
+        return {'extraction':{'summary':extraction.get('summary'),
+            'assertions':list(extraction.get('assertions') or [])[:50]}}
+    if stage=='video':return {'frame_count':len(output.get('fotogramas') or []),'has_audio':bool(output.get('audio'))}
+    return {}
+
+
 def create_app(store=None, root=None, config=None, token=None):
     store=store or Store();root=root or storage_root();config=config or load_config()
     token=token or os.environ['SC_API_TOKEN']
@@ -117,6 +130,23 @@ def create_app(store=None, root=None, config=None, token=None):
         with store.connect() as c:r=c.execute('SELECT * FROM runs WHERE id=%s',(run_id,)).fetchone()
         if not r:raise HTTPException(404,'Ejecución no encontrada')
         return r
+
+    @private.get('/model-results')
+    def model_results(offset:int=0,limit:int=50):
+        """Matriz privada de salidas: una fila por ejecución, sin alterar predicciones."""
+        if offset<0 or not 1<=limit<=200:raise HTTPException(400,'Paginación inválida')
+        with store.connect() as c:
+            rows=c.execute('''SELECT r.id AS run_id,r.finished_at,r.output,r.metrics,r.model_identity,
+                j.id AS job_id,j.stage,j.experiment_id,e.id AS evidence_id,e.original_name AS file_name,
+                e.modality,v.id AS conversation_id,v.original_name AS conversation_name,
+                (SELECT count(*) FROM reviews rv WHERE rv.run_id=r.id) AS review_count
+                FROM runs r JOIN jobs j ON j.id=r.job_id JOIN evidence e ON e.id=j.evidence_id
+                JOIN conversations v ON v.id=e.conversation_id WHERE r.state='completed'
+                ORDER BY r.finished_at DESC,r.id LIMIT %s OFFSET %s''',(limit,offset)).fetchall()
+            total=c.execute("SELECT count(*) AS n FROM runs WHERE state='completed'").fetchone()['n']
+        for row in rows:
+            row['output_summary']=compact_result(row['stage'],row.pop('output',None))
+        return {'total':total,'items':rows}
 
     @private.get('/runs/{run_id}/annotated')
     def annotated(run_id:UUID):

@@ -20,6 +20,7 @@
     "cpu_threads": 2
   },
   "lights": {
+    "mode": "manual_review",
     "model": "qwen3-vl:2b",
     "expected_digest": null,
     "min_crop_side": 16,
