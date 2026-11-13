@@ -116,6 +116,18 @@ class Store:
         c.execute("UPDATE jobs SET state=%s,lease_until=NULL,available_at=now()+interval '30 seconds',updated_at=now() WHERE id=%s",(state,job['id']))
         c.commit()
 
+    def retry_failed_text(self, ident):
+        """Queue one more attempt while preserving the old failed runs for review."""
+        with self.connect() as c:
+            row=c.execute('SELECT stage,state,attempts FROM jobs WHERE id=%s FOR UPDATE',(ident,)).fetchone()
+            if row is None:return 'not_found'
+            if row['stage']!='text' or row['state']!='failed':return 'not_failed_text'
+            if row['attempts']>=5:return 'retry_limit_reached'
+            c.execute('''UPDATE jobs SET state='pending',max_attempts=attempts+1,
+                available_at=now(),lease_token=NULL,lease_until=NULL,updated_at=now()
+                WHERE id=%s''',(ident,))
+            return 'queued'
+
     def review(self, run_id, field, label, reviewer, comment=None):
         with self.connect() as c:
             return c.execute('INSERT INTO reviews(id,run_id,field,human_label,reviewer,comment) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id',

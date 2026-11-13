@@ -18,6 +18,13 @@ sesión en memoria. El navegador libera cada copia al cerrar o cambiar de
 tarea. Los archivos originales, las salidas y los reintentos permanecen en
 `/data/core`; el panel no cambia su contenido.
 
+Si falla la extracción de texto, el panel ofrece **Reintentar texto** para una
+única ejecución adicional con la configuración de esa tarea. Conserva los
+intentos anteriores y solo permite reintentar una tarea ya fallida, hasta cinco
+intentos en total. Los códigos de error conocidos de validación se muestran
+sin incluir el texto ciudadano; los mensajes arbitrarios del modelo y de las
+librerías siguen ocultos. Un nuevo intento no garantiza una salida válida.
+
 Antes de cambiar recursos en Easypanel, medir CPU/RAM del host y de los dos
 contenedores bajo carga (`docker stats --no-stream`), y revisar `wall_seconds`,
 `cpu_seconds`, `peak_rss_bytes` y tiempos de Ollama en la salida de una tarea.

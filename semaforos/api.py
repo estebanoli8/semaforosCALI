@@ -106,6 +106,12 @@ def create_app(store=None, root=None, config=None, token=None):
             if not row:raise HTTPException(409,'Texto fuente pendiente de importar')
             return {'job_ids':[str(store.enqueue(e['id'],'text',body.experiment_id,config,{'sources':part})) for part in chat_sources(store,e['id'],config)]}
         raise HTTPException(400,'Modalidad sin etapa automática')
+    @private.post('/jobs/{ident}/retry')
+    def retry_text(ident:UUID):
+        state=store.retry_failed_text(ident)
+        if state=='not_found':raise HTTPException(404,'Tarea no encontrada')
+        if state!='queued':raise HTTPException(409,state)
+        return {'state':state}
     @private.get('/runs/{run_id}')
     def run(run_id:UUID):
         with store.connect() as c:r=c.execute('SELECT * FROM runs WHERE id=%s',(run_id,)).fetchone()

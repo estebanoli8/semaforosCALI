@@ -81,6 +81,24 @@ class PostgresTests(unittest.TestCase):
         self.assertFalse(once(self.store,self.root,runner=broken))
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT state FROM jobs').fetchone()['state'],'failed')
 
+    def test_private_manual_text_retry_preserves_failed_run(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        config=copy.deepcopy(self.config);config['max_attempts']=1
+        ident=self.store.enqueue(self.eid,'text','A',config,{'sources':[]})
+        with self.store.connect() as c:
+            job=self.store.claim(c)
+            self.store.fail(c,job,'unbacked_quote')
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32))
+        path=f'/jobs/{ident}/retry';auth={'Authorization':'Bearer '+'x'*32}
+        self.assertEqual(client.post(path).status_code,401)
+        self.assertEqual(client.post(path,headers=auth).json(),{'state':'queued'})
+        self.assertEqual(client.post(path,headers=auth).status_code,409)
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM runs WHERE job_id=%s',(ident,)).fetchone()['n'],1)
+            self.assertEqual(c.execute('SELECT error_code FROM runs WHERE job_id=%s',(ident,)).fetchone()['error_code'],'unbacked_quote')
+            self.assertEqual(self.store.claim(c)['attempts'],2)
+
     def test_job_origin_and_annotated_image_are_private(self):
         from fastapi.testclient import TestClient
         from semaforos.api import create_app
