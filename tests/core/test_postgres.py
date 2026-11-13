@@ -33,6 +33,20 @@ class PostgresTests(unittest.TestCase):
         self.store.migrate()
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],5)
 
+    def test_controlled_trial_does_not_consume_old_queue(self):
+        from semaforos.trial import run_trial
+        failed=self.store.enqueue(self.eid,'text','old',self.config,{'sources':[]})
+        pending=self.store.enqueue(self.eid,'audio','waiting',self.config)
+        with self.store.connect() as c:
+            c.execute("UPDATE jobs SET state='failed',attempts=max_attempts WHERE id=%s",(failed,))
+        result=run_trial(self.store,self.root,self.config,'text','controlled',runner=lambda *args:
+            {'result':{'extraction':{'assertions':[]}},'metrics':{'wall_seconds':1},'model_identity':{'test_double':True}})
+        self.assertEqual(result['status'],'completed')
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT state,attempts FROM jobs WHERE id=%s',(pending,)).fetchone(),{'state':'pending','attempts':0})
+            self.assertEqual(c.execute('SELECT state FROM jobs WHERE id=%s',(failed,)).fetchone()['state'],'failed')
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM runs').fetchone()['n'],1)
+
     def test_idempotent_jobs_and_new_experiment(self):
         first=self.store.enqueue(self.eid,'audio','A',self.config)
         self.assertEqual(first,self.store.enqueue(self.eid,'audio','A',self.config))

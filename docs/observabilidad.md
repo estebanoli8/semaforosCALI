@@ -1,5 +1,23 @@
 # Seguimiento del procesamiento privado
 
+## Prueba controlada después de detener el lote
+
+Desplegar con `SC_PROCESS=api` mantiene el panel disponible sin iniciar el
+trabajador automático. Con Ollama activo, ejecutar desde el contenedor core:
+
+```bash
+python -m semaforos.trial --stage text
+python -m semaforos.trial --stage lights
+```
+
+Cada comando selecciona la entrada más pequeña de esa etapa que ya falló y
+crea un trabajo en un experimento nuevo con la configuración actual y un solo
+intento. El bloqueo global evita inferencias simultáneas; la selección por ID
+evita consumir tareas del lote anterior. Las salidas quedan en el panel. El
+comando devuelve código distinto de cero si falla: revisar ese resultado antes
+de continuar. La indexación de hallazgos y la cola completa se reanudan cuando
+se vuelve a desplegar con `SC_PROCESS=all`.
+
 El panel de `semaforos-core` muestra el avance total de **tareas conocidas**.
 Un video crea nuevas tareas cuando termina la extracción de sus fotogramas y
 audio, por lo que el porcentaje puede disminuir sin perder trabajo. Cuenta las
