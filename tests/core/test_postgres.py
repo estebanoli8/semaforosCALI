@@ -99,6 +99,16 @@ class PostgresTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT error_code FROM runs WHERE job_id=%s',(ident,)).fetchone()['error_code'],'unbacked_quote')
             self.assertEqual(self.store.claim(c)['attempts'],2)
 
+    def test_failed_lights_can_retry_without_restarting_video(self):
+        config=copy.deepcopy(self.config);config['max_attempts']=1
+        ident=self.store.enqueue(self.eid,'lights','A',config,{'detections':[]})
+        with self.store.connect() as c:
+            job=self.store.claim(c)
+            self.store.fail(c,job,'invalid_lights')
+        self.assertEqual(self.store.retry_failed_model(ident),'queued')
+        with self.store.connect() as c:
+            self.assertEqual(self.store.claim(c)['attempts'],2)
+
     def test_job_origin_and_annotated_image_are_private(self):
         from fastapi.testclient import TestClient
         from semaforos.api import create_app

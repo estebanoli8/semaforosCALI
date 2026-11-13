@@ -98,7 +98,7 @@ async function refresh(){
   for(const item of jobs.items){
     const action=document.createElement('div');
     if(item.run_id)action.append(button(item.state==='running'?'Ver avance':'Ver salida',async()=>{await showRun(item);$('resultBox').scrollIntoView({behavior:'smooth'});}));
-    if(item.stage==='text'&&item.state==='failed')action.append(button('Reintentar texto',async()=>{await api('/jobs/'+item.id+'/retry',{method:'POST'});await refresh();}));
+    if(['text','lights'].includes(item.stage)&&item.state==='failed')action.append(button('Reintentar modelo',async()=>{await api('/jobs/'+item.id+'/retry',{method:'POST'});await refresh();}));
     if(!action.childNodes.length)action.textContent='Pendiente';
     row($('jobsRows'),[jobSource(item),item.experiment_id,states[item.state]+(item.expansion_error?' · revisar encadenamiento':''),jobBar(item),item.attempts,action]);
     if(selectedJobId===item.id&&item.state==='running'&&selectedState==='running'){

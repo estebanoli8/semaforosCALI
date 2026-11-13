@@ -116,12 +116,12 @@ class Store:
         c.execute("UPDATE jobs SET state=%s,lease_until=NULL,available_at=now()+interval '30 seconds',updated_at=now() WHERE id=%s",(state,job['id']))
         c.commit()
 
-    def retry_failed_text(self, ident):
-        """Queue one more attempt while preserving the old failed runs for review."""
+    def retry_failed_model(self, ident):
+        """Queue one more model attempt; preserve old failed runs for review."""
         with self.connect() as c:
             row=c.execute('SELECT stage,state,attempts FROM jobs WHERE id=%s FOR UPDATE',(ident,)).fetchone()
             if row is None:return 'not_found'
-            if row['stage']!='text' or row['state']!='failed':return 'not_failed_text'
+            if row['stage'] not in ('text','lights') or row['state']!='failed':return 'not_failed_model'
             if row['attempts']>=5:return 'retry_limit_reached'
             c.execute('''UPDATE jobs SET state='pending',max_attempts=attempts+1,
                 available_at=now(),lease_token=NULL,lease_until=NULL,updated_at=now()
