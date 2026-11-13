@@ -117,8 +117,8 @@ class Uploads:
             row=c.execute("UPDATE uploads SET state='queued',attempts=0,error_code=NULL,updated_at=now() WHERE id=%s RETURNING *",(ident,)).fetchone()
         return self.public(row)
 
-    def process_one_locked(self):
-        """Solo bajo el advisory lock de sesión del trabajador/CLI (LOCK_KEY)."""
+    def process_locked(self, ident):
+        """Importa exactamente una carga. Solo bajo LOCK_KEY de sesión."""
         from .ingest import import_zip
         # El archivo original ya es durable antes de confirmar 'received'. Si hubo
         # caída después del COMMIT, eliminar exclusivamente la copia de transporte.
@@ -128,11 +128,11 @@ class Uploads:
             self.path(item).unlink(missing_ok=True)
             with self.store.connect() as c:c.execute('UPDATE uploads SET transport_cleaned=true WHERE id=%s',(item['id'],))
         with self.store.connect() as c:
-            row=c.execute("SELECT * FROM uploads WHERE state IN ('queued','importing') ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1").fetchone()
-            if not row:return False
+            row=c.execute("SELECT * FROM uploads WHERE id=%s AND state IN ('queued','importing') FOR UPDATE SKIP LOCKED",(ident,)).fetchone()
+            if not row:return None
             if row['attempts']>=3:
                 c.execute("UPDATE uploads SET state='error',error_code='import_interrupted_repeatedly',updated_at=now() WHERE id=%s",(row['id'],))
-                return True
+                return self.get(ident)
             c.execute("UPDATE uploads SET state='importing',attempts=attempts+1,updated_at=now() WHERE id=%s",(row['id'],))
         try:
             result=import_zip(self.store,self.root,self.path(row),row['config'],row['experiment_id'])
@@ -145,11 +145,19 @@ class Uploads:
             code=str(exc) if str(exc) in known else type(exc).__name__
             with self.store.connect() as c:
                 c.execute("UPDATE uploads SET state='error',error_code=%s,updated_at=now() WHERE id=%s",(code,row['id']))
-            return True
+            return self.get(ident)
         # Si falla la limpieza, el próximo ciclo la recupera; no degradar una
         # importación ya confirmada a error ni volver a inferir sus archivos.
         try:
             self.path(row).unlink(missing_ok=True)
             with self.store.connect() as c:c.execute('UPDATE uploads SET transport_cleaned=true WHERE id=%s',(row['id'],))
         except OSError:pass
+        return self.get(ident)
+
+    def process_one_locked(self):
+        """Importa la carga más antigua. Solo bajo LOCK_KEY de sesión."""
+        with self.store.connect() as c:
+            row=c.execute("SELECT id FROM uploads WHERE state IN ('queued','importing') ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1").fetchone()
+        if not row:return False
+        self.process_locked(row['id'])
         return True
