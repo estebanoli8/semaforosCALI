@@ -33,6 +33,20 @@ class PostgresTests(unittest.TestCase):
         self.store.migrate()
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],5)
 
+    def test_controlled_trial_does_not_consume_old_queue(self):
+        from semaforos.trial import run_trial
+        failed=self.store.enqueue(self.eid,'text','old',self.config,{'sources':[]})
+        pending=self.store.enqueue(self.eid,'audio','waiting',self.config)
+        with self.store.connect() as c:
+            c.execute("UPDATE jobs SET state='failed',attempts=max_attempts WHERE id=%s",(failed,))
+        result=run_trial(self.store,self.root,self.config,'text','controlled',runner=lambda *args:
+            {'result':{'extraction':{'assertions':[]}},'metrics':{'wall_seconds':1},'model_identity':{'test_double':True}})
+        self.assertEqual(result['status'],'completed')
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT state,attempts FROM jobs WHERE id=%s',(pending,)).fetchone(),{'state':'pending','attempts':0})
+            self.assertEqual(c.execute('SELECT state FROM jobs WHERE id=%s',(failed,)).fetchone()['state'],'failed')
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM runs').fetchone()['n'],1)
+
     def test_idempotent_jobs_and_new_experiment(self):
         first=self.store.enqueue(self.eid,'audio','A',self.config)
         self.assertEqual(first,self.store.enqueue(self.eid,'audio','A',self.config))
@@ -80,6 +94,54 @@ class PostgresTests(unittest.TestCase):
         self.assertTrue(once(self.store,self.root,runner=broken))
         self.assertFalse(once(self.store,self.root,runner=broken))
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT state FROM jobs').fetchone()['state'],'failed')
+
+    def test_private_manual_text_retry_preserves_failed_run(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        config=copy.deepcopy(self.config);config['max_attempts']=1
+        ident=self.store.enqueue(self.eid,'text','A',config,{'sources':[]})
+        with self.store.connect() as c:
+            job=self.store.claim(c)
+            self.store.fail(c,job,'unbacked_quote')
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32))
+        path=f'/jobs/{ident}/retry';auth={'Authorization':'Bearer '+'x'*32}
+        self.assertEqual(client.post(path).status_code,401)
+        self.assertEqual(client.post(path,headers=auth).json(),{'state':'queued'})
+        self.assertEqual(client.post(path,headers=auth).status_code,409)
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM runs WHERE job_id=%s',(ident,)).fetchone()['n'],1)
+            self.assertEqual(c.execute('SELECT error_code FROM runs WHERE job_id=%s',(ident,)).fetchone()['error_code'],'unbacked_quote')
+            self.assertEqual(self.store.claim(c)['attempts'],2)
+
+    def test_failed_lights_can_retry_without_restarting_video(self):
+        config=copy.deepcopy(self.config);config['max_attempts']=1
+        ident=self.store.enqueue(self.eid,'lights','A',config,{'detections':[]})
+        with self.store.connect() as c:
+            job=self.store.claim(c)
+            self.store.fail(c,job,'invalid_lights')
+        self.assertEqual(self.store.retry_failed_model(ident),'queued')
+        with self.store.connect() as c:
+            self.assertEqual(self.store.claim(c)['attempts'],2)
+
+    def test_job_origin_and_annotated_image_are_private(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+        self.store.enqueue(self.eid,'detect','visual',self.config)
+        def synthetic_image(store,connection,job,root):
+            artifact=root/'runs'/str(job['run_id'])/'artifacts'/'anotada.jpg'
+            artifact.parent.mkdir(parents=True,exist_ok=True)
+            artifact.write_bytes(b'fake jpeg for private endpoint')
+            return {'result':{'annotation':str(artifact),'objects':[],'width':1,'height':1},
+                    'metrics':{},'model_identity':{'test_double':True}}
+        self.assertTrue(once(self.store,self.root,runner=synthetic_image))
+        client=TestClient(create_app(self.store,self.root,self.config,'x'*32));auth={'Authorization':'Bearer '+'x'*32}
+        job=client.get('/jobs',headers=auth).json()['items'][0]
+        self.assertEqual(job['file_name'],'audio.ogg')
+        self.assertEqual(job['conversation_name'],'Conversación ficticia')
+        path='/runs/'+job['run_id']+'/annotated'
+        self.assertEqual(client.get(path).status_code,401)
+        self.assertEqual(client.get(path,headers=auth).content,b'fake jpeg for private endpoint')
+        client.close()
 
     def test_zip_literal_content_duplicate_and_path_escape(self):
         path=self.root/'WhatsApp Chat - Ejemplo.zip'

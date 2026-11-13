@@ -67,14 +67,15 @@ class Store:
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING id''',
                 (uuid4(),evidence_id,stage,experiment,Jsonb(config),canonical_hash(config),__version__,Jsonb(payload),key,config['max_attempts'])).fetchone()['id']
 
-    def claim(self, c):
+    def claim(self, c, job_id=None):
         # El llamador conserva advisory lock de sesión durante TODO el proceso pesado.
-        c.execute("UPDATE runs SET state='interrupted',finished_at=now(),error_code='worker_lost' WHERE state='running' AND job_id IN (SELECT id FROM jobs WHERE state='running' AND lease_until<now())")
-        c.execute("UPDATE jobs SET state='failed',updated_at=now() WHERE state='running' AND lease_until<now() AND attempts>=max_attempts")
+        c.execute("UPDATE runs SET state='interrupted',finished_at=now(),error_code='worker_lost' WHERE state='running' AND job_id IN (SELECT id FROM jobs WHERE state='running' AND lease_until<now() AND (%s::uuid IS NULL OR id=%s::uuid))",(job_id,job_id))
+        c.execute("UPDATE jobs SET state='failed',updated_at=now() WHERE state='running' AND lease_until<now() AND attempts>=max_attempts AND (%s::uuid IS NULL OR id=%s::uuid)",(job_id,job_id))
         row=c.execute("""SELECT j.*,e.storage_path,e.sha256,e.conversation_id,e.modality,e.metadata AS evidence_metadata
             FROM jobs j JOIN evidence e ON e.id=j.evidence_id
             WHERE (j.state='pending' AND j.available_at<=now() OR j.state='running' AND j.lease_until<now())
-            AND j.attempts<j.max_attempts ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""").fetchone()
+            AND j.attempts<j.max_attempts AND (%s::uuid IS NULL OR j.id=%s::uuid)
+            ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""",(job_id,job_id)).fetchone()
         if not row:c.commit();return None
         token=uuid4();run_id=uuid4()
         c.execute("UPDATE jobs SET state='running',attempts=attempts+1,lease_token=%s,lease_until=now()+interval '90 seconds',updated_at=now() WHERE id=%s",(token,row['id']))
@@ -115,6 +116,18 @@ class Store:
         c.execute("UPDATE runs SET state='failed',finished_at=now(),error_code=%s WHERE id=%s",(code,job['run_id']))
         c.execute("UPDATE jobs SET state=%s,lease_until=NULL,available_at=now()+interval '30 seconds',updated_at=now() WHERE id=%s",(state,job['id']))
         c.commit()
+
+    def retry_failed_model(self, ident):
+        """Queue one more model attempt; preserve old failed runs for review."""
+        with self.connect() as c:
+            row=c.execute('SELECT stage,state,attempts FROM jobs WHERE id=%s FOR UPDATE',(ident,)).fetchone()
+            if row is None:return 'not_found'
+            if row['stage'] not in ('text','lights') or row['state']!='failed':return 'not_failed_model'
+            if row['attempts']>=5:return 'retry_limit_reached'
+            c.execute('''UPDATE jobs SET state='pending',max_attempts=attempts+1,
+                available_at=now(),lease_token=NULL,lease_until=NULL,updated_at=now()
+                WHERE id=%s''',(ident,))
+            return 'queued'
 
     def review(self, run_id, field, label, reviewer, comment=None):
         with self.connect() as c:
