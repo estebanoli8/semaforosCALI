@@ -34,7 +34,8 @@
     "expected_digest": null,
     "context": 4096,
     "max_tokens": 1200,
-    "threads": 4
+    "threads": 4,
+    "keep_alive": "30m"
   },
   "video": {"max_duration_seconds": 600},
   "timeout_seconds": 3600,
