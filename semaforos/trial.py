@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import os
+import time
 from .config import load_config, storage_root
 from .store import LOCK_KEY, Store
 from .worker import execute_child
@@ -27,7 +28,17 @@ def run_trial(store, root, config, stage, experiment, runner=None):
             job=store.claim(c,job_id=ident)
             if not job:return {'job_id':str(ident),'status':'already_attempted'}
             try:
-                output=(runner or execute_child)(store,c,job,root)
+                started=time.monotonic();last=[None]
+                def report(progress):
+                    phase=str(progress.get('phase') or 'Procesando')
+                    fraction=progress.get('fraction')
+                    percent=f' · {max(0,min(100,round(fraction*100)))}%' if isinstance(fraction,(int,float)) else ''
+                    marker=(phase,percent,progress.get('characters'))
+                    if marker!=last[0]:
+                        print(f'[{time.monotonic()-started:5.0f}s] {phase}{percent}',flush=True)
+                        last[0]=marker
+                output=(runner(store,c,job,root) if runner else
+                        execute_child(store,c,job,root,progress_reporter=report))
                 store.complete(c,job,output)
                 return {'job_id':str(ident),'run_id':str(job['run_id']),'stage':stage,
                         'status':'completed','seconds':output['metrics'].get('wall_seconds')}
