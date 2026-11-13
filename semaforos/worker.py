@@ -22,13 +22,15 @@ def text_chunks(text, source_id, origin):
                 'origin':origin,'source_id':str(source_id),'char_start':offset}]
 
 
-def expand(store, root):
+def expand(store, root, conversation_id=None):
     """Reconciliación idempotente: recupera una caída tras guardar la predicción."""
     with store.connect() as c:
         rows=c.execute("""SELECT j.*,r.id AS run_id,r.output,e.storage_path,e.conversation_id,e.modality
             FROM jobs j JOIN runs r ON r.job_id=j.id AND r.state='completed'
             JOIN evidence e ON e.id=j.evidence_id
-            WHERE j.state='completed' AND j.expanded_at IS NULL ORDER BY j.created_at LIMIT 20""").fetchall()
+            WHERE j.state='completed' AND j.expanded_at IS NULL
+            AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
+            ORDER BY j.created_at LIMIT 20""",(conversation_id,conversation_id)).fetchall()
     for job in rows:
         try:
             result=job['output'];config=job['config'];experiment=job['experiment_id']

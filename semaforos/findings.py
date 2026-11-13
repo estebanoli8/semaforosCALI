@@ -65,11 +65,13 @@ def index_run(store, run_id):
         c.execute("INSERT INTO finding_indexes(run_id,state) VALUES(%s,'completed') ON CONFLICT(run_id) DO UPDATE SET state='completed',error_code=NULL,indexed_at=now()",(run_id,))
 
 
-def index_pending(store):
+def index_pending(store, conversation_id=None):
     with store.connect() as c:
         rows=c.execute("""SELECT r.id FROM runs r JOIN jobs j ON j.id=r.job_id
+            JOIN evidence e ON e.id=j.evidence_id
             WHERE r.state='completed' AND j.stage='text' AND NOT EXISTS(SELECT 1 FROM finding_indexes f WHERE f.run_id=r.id)
-            ORDER BY r.finished_at,r.id LIMIT 10""").fetchall()
+            AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
+            ORDER BY r.finished_at,r.id LIMIT 10""",(conversation_id,conversation_id)).fetchall()
     for row in rows:
         try:index_run(store,row['id'])
         except (ValueError,TypeError,KeyError) as exc:
