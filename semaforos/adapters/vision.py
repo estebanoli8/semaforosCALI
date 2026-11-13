@@ -58,6 +58,16 @@ def read_lights(path, detections, config, on_progress=None):
     image=open_image(path);objects=[];identities=[];timings=[]
     total=len(detections)
     if on_progress:on_progress(phase='Preparando recortes',fraction=0.0,current=0,total=total)
+    if config.get('mode')=='manual_review':
+        for index,item in enumerate(detections,1):
+            value=lights({'red':None,'yellow':None,'green':None,
+                          'reason':'pendiente_revision_humana'})
+            value['detection_id']=item['id'];objects.append(value)
+            if on_progress:on_progress(phase=f'Evidencia {index} de {total} preparada',
+                                       fraction=index/total,current=index,total=total)
+        return {'objects':objects,'ollama_timings':[]}, {
+            'provider':'human_review_queue','mode':'manual_review',
+            'prompt':None,'skipped_small_crops':0}
     for index,item in enumerate(detections,1):
         phase=f'Leyendo luces {index} de {total}'
         if on_progress:on_progress(phase=phase,fraction=(index-1)/total,current=index,total=total)
