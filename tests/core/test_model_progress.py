@@ -11,6 +11,18 @@ from semaforos.adapters.vision import LIGHT_SCHEMA, read_lights
 
 
 class StreamTests(unittest.TestCase):
+    def test_manual_visual_review_records_indeterminate_without_model(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'image.jpg'
+            Image.new('RGB',(80,120),'black').save(path)
+            with patch('semaforos.adapters.vision.chat') as model:
+                result,identity=read_lights(path,[{'id':'det-1','bbox':[5,5,75,115]}],
+                    {'mode':'manual_review','min_crop_side':16})
+        model.assert_not_called()
+        self.assertEqual(result['objects'][0]['reading_state'],'indeterminado')
+        self.assertEqual(result['objects'][0]['reason'],'pendiente_revision_humana')
+        self.assertEqual(identity['mode'],'manual_review')
+
     def test_visual_reading_uses_compact_schema_and_reports_progress(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'image.jpg'
