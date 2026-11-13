@@ -1,12 +1,30 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+from PIL import Image
 from semaforos.adapters.ollama import chat
 from semaforos.inference import safe_error_code
 from semaforos.adapters.text import extract, extraction_schema
+from semaforos.adapters.vision import LIGHT_SCHEMA, read_lights
 
 
 class StreamTests(unittest.TestCase):
+    def test_visual_reading_uses_compact_schema_and_reports_progress(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'image.jpg'
+            Image.new('RGB',(80,120),'black').save(path)
+            prediction={'red':True,'yellow':False,'green':False,'reason':'Rojo visible'}
+            seen=[]
+            with patch('semaforos.adapters.vision.chat',return_value=(prediction,{'digest':'abc'},{'eval_count':20})) as model:
+                result,_=read_lights(path,[{'id':'det-1','bbox':[5,5,75,115]}],
+                                     {'min_crop_side':16},on_progress=lambda **value:seen.append(value))
+        self.assertTrue(result['objects'][0]['red'])
+        self.assertEqual(model.call_args.kwargs['format_schema'],LIGHT_SCHEMA)
+        self.assertEqual(seen[-1]['fraction'],1)
+        self.assertIn('validada',seen[-1]['phase'])
+
     def test_source_alias_is_resolved_and_raw_prediction_is_preserved(self):
         sources=[{'id':'uuid-real:0','text':'Quinta con quinta está apagado.'}]
         prediction={'assertions':[{'source_id':'S1','variable':'ubicacion',

@@ -83,13 +83,14 @@ def once(store, root, runner=None):
             c.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,));c.commit()
 
 
-def execute_child(store,c,job,root):
+def execute_child(store,c,job,root,progress_reporter=None):
     folder=contained(root,f"runs/{job['run_id']}");folder.mkdir(parents=True,exist_ok=True)
     spec={'storage':str(root),'path':job['storage_path'],'sha256':job['sha256'],
           'output_dir':str(folder.relative_to(root)/'artifacts'),'stage':job['stage'],
           'config':job['config'],'payload':job['payload'],'evidence_id':str(job['evidence_id'])}
     atomic_json(folder/'input.json',spec)
     result_file=folder/'output.json'
+    progress_file=folder/'progress.json';last_progress=[None]
     deadline=time.monotonic()+job['config']['timeout_seconds']
     with (folder/'process.log').open('wb') as log:
         process=subprocess.Popen([sys.executable,'-m','semaforos.inference',str(folder/'input.json'),str(result_file)],
@@ -97,6 +98,14 @@ def execute_child(store,c,job,root):
         try:
             while process.poll() is None:
                 store.heartbeat(c,job)
+                if progress_reporter and progress_file.is_file():
+                    try:
+                        current=json.loads(progress_file.read_text()[:8192])
+                        signature=tuple(current.get(key) for key in
+                                        ('phase','fraction','current','total','characters'))
+                        if signature!=last_progress[0]:
+                            progress_reporter(current);last_progress[0]=signature
+                    except (OSError,ValueError,TypeError):pass
                 if time.monotonic()>deadline:raise TimeoutError('inference_timeout')
                 try:process.wait(timeout=5)
                 except subprocess.TimeoutExpired:pass
