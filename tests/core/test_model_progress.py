@@ -2,9 +2,15 @@ import json
 import unittest
 from unittest.mock import patch
 from semaforos.adapters.ollama import chat
+from semaforos.inference import safe_error_code
 
 
 class StreamTests(unittest.TestCase):
+    def test_errors_identify_static_validation_failure_without_leaking_inputs(self):
+        self.assertEqual(safe_error_code(ValueError('unbacked_quote')), 'unbacked_quote')
+        self.assertEqual(safe_error_code(ValueError('citizen name and text')), 'ValueError')
+        self.assertEqual(safe_error_code(RuntimeError('secret database URL')), 'RuntimeError')
+
     def test_partial_text_is_displayed_without_changing_final_json(self):
         class Response:
             def __init__(self):

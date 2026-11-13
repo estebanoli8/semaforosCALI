@@ -9,6 +9,25 @@ import time
 from .files import atomic_json, contained, sha256
 
 
+SAFE_ERROR_CODES = frozenset({
+    'input_checksum_mismatch', 'unsupported_stage', 'text_requires_chunking',
+    'invalid_ollama_url', 'model_response_too_large', 'incomplete_model_output',
+    'model_not_installed', 'model_digest_mismatch', 'truncated_model_output',
+    'model_changed_during_run', 'invalid_assertions', 'invalid_assertion_item',
+    'invalid_variable', 'unknown_source', 'unbacked_quote',
+    'invalid_interpretation', 'invalid_summary', 'invalid_lights',
+    'light_requires_boolean_or_null', 'invalid_reason', 'invalid_image_size',
+    'invalid_bbox', 'bbox_outside_image', 'invalid_score',
+})
+
+
+def safe_error_code(exc):
+    """Only publish known static codes; arbitrary error messages may contain source data."""
+    if type(exc) is ValueError and str(exc) in SAFE_ERROR_CODES:
+        return str(exc)
+    return type(exc).__name__
+
+
 def execute(spec):
     root=Path(spec['storage']);path=contained(root,spec['path'])
     if sha256(path)!=spec['sha256']:raise ValueError('input_checksum_mismatch')
@@ -63,6 +82,6 @@ if __name__=='__main__':
     try:
         atomic_json(sys.argv[2],execute(spec))
     except Exception as exc:
-        # Mensajes de terceros pueden incluir rutas, fuentes o credenciales: solo tipo público.
-        atomic_json(sys.argv[2],{'error_code':type(exc).__name__})
+        # Nunca exponer mensajes arbitrarios: pueden incluir fuentes o credenciales.
+        atomic_json(sys.argv[2],{'error_code':safe_error_code(exc)})
         raise SystemExit(1)
