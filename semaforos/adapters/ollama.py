@@ -46,10 +46,10 @@ def identity(config):
     return {'provider':'ollama_local','model':config['model'],'digest':found['digest']}
 
 
-def chat(config, messages, on_partial=None):
+def chat(config, messages, on_partial=None, format_schema=None):
     model_id=identity(config)
     payload={'model':config['model'],'messages':messages,'stream':False,'think':False,
-        'format':'json','keep_alive':config.get('keep_alive',0),
+        'format':format_schema or 'json','keep_alive':config.get('keep_alive',0),
         'options':{'temperature':0,'num_ctx':config['context'],'num_predict':config['max_tokens'],'num_thread':config['threads']}}
     result=stream_chat(payload,on_partial) if on_partial else request('/api/chat',payload)
     if result.get('done_reason')=='length':raise ValueError('truncated_model_output')

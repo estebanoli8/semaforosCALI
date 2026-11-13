@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 from semaforos.adapters.ollama import chat
 from semaforos.inference import safe_error_code
-from semaforos.adapters.text import extract
+from semaforos.adapters.text import extract, extraction_schema
 
 
 class StreamTests(unittest.TestCase):
@@ -11,11 +11,16 @@ class StreamTests(unittest.TestCase):
         sources=[{'id':'uuid-real:0','text':'Quinta con quinta está apagado.'}]
         prediction={'assertions':[{'source_id':'S1','variable':'ubicacion',
             'literal':'Quinta con quinta','interpretation':None}],'summary':'Reporte'}
-        with patch('semaforos.adapters.text.chat',return_value=(prediction,{'digest':'abc'},{'eval_count':10})):
+        with patch('semaforos.adapters.text.chat',return_value=(prediction,{'digest':'abc'},{'eval_count':10})) as model:
             result,_=extract(sources,{})
         self.assertEqual(result['extraction']['assertions'][0]['source_id'],'uuid-real:0')
         self.assertEqual(result['raw_extraction']['assertions'][0]['source_id'],'S1')
         self.assertEqual(result['normalizations'][0]['reason'],'prompt_alias')
+        schema=model.call_args.kwargs['format_schema']
+        self.assertEqual(schema['properties']['assertions']['items']['properties']['source_id']['enum'],['S1'])
+
+    def test_text_schema_rejects_empty_source_catalog(self):
+        with self.assertRaisesRegex(ValueError,'text_requires_sources'):extraction_schema({})
 
     def test_unknown_source_is_resolved_only_by_unique_exact_quote(self):
         sources=[{'id':'a','text':'Semáforo apagado.'},{'id':'b','text':'Otro mensaje.'}]

@@ -13,7 +13,7 @@ SAFE_ERROR_CODES = frozenset({
     'input_checksum_mismatch', 'unsupported_stage', 'text_requires_chunking',
     'invalid_ollama_url', 'model_response_too_large', 'incomplete_model_output',
     'model_not_installed', 'model_digest_mismatch', 'truncated_model_output',
-    'model_changed_during_run', 'invalid_assertions', 'invalid_assertion_item',
+    'model_changed_during_run', 'text_requires_sources', 'invalid_assertions', 'invalid_assertion_item',
     'invalid_variable', 'unknown_source', 'unbacked_quote',
     'invalid_interpretation', 'invalid_summary', 'invalid_lights',
     'light_requires_boolean_or_null', 'invalid_reason', 'invalid_image_size',
