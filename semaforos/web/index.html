@@ -25,6 +25,10 @@
 <p class="muted">Al procesar un video aparecen nuevas tareas para sus fotogramas y audio; el porcentaje puede bajar cuando se agregan. Una barra animada indica que el modelo no informa un porcentaje medible. Los conteos son de tareas, todavía no de reportes consolidados.</p>
 <div class="tableScroll"><table><thead><tr><th>Tarea y origen</th><th>Experimento</th><th>Estado</th><th>Avance</th><th>Intentos</th><th>Resultado</th></tr></thead><tbody id="jobsRows"></tbody></table></div>
 <div class="pagination"><button id="previousJobs" class="secondary">Anterior</button><span id="jobPage"></span><button id="nextJobs" class="secondary">Siguiente</button></div></section>
+<section><div class="sectionTitle"><h2>Evidencias y resultados de los modelos</h2><button id="loadResults" class="secondary">Actualizar tabla</button></div>
+<p class="muted">Una fila por ejecución completada. Conserva conversación, evidencia original, experimento, modelo, variables producidas y estado de revisión.</p>
+<div class="tableScroll"><table><thead><tr><th>Conversación / evidencia</th><th>Modelo y etapa</th><th>Variables producidas</th><th>Procesado</th><th>Revisión</th><th>Detalle</th></tr></thead><tbody id="modelResultsRows"></tbody></table></div>
+<div class="pagination"><button id="previousModelResults" class="secondary" disabled>Anterior</button><span id="modelResultsPage"></span><button id="nextModelResults" class="secondary" disabled>Siguiente</button></div></section>
 <section id="comparisonWorkspace"><h2>Comparar exportaciones</h2>
 <p>Compara dos índices de chat. Confirmar su relación conserva todos los archivos y reportes; todavía no fusiona ni elimina duplicados.</p>
 <button id="loadExports">Cargar más exportaciones</button><span id="exportCount"></span>
