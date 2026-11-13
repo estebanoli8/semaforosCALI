@@ -3,9 +3,36 @@ import unittest
 from unittest.mock import patch
 from semaforos.adapters.ollama import chat
 from semaforos.inference import safe_error_code
+from semaforos.adapters.text import extract
 
 
 class StreamTests(unittest.TestCase):
+    def test_source_alias_is_resolved_and_raw_prediction_is_preserved(self):
+        sources=[{'id':'uuid-real:0','text':'Quinta con quinta está apagado.'}]
+        prediction={'assertions':[{'source_id':'S1','variable':'ubicacion',
+            'literal':'Quinta con quinta','interpretation':None}],'summary':'Reporte'}
+        with patch('semaforos.adapters.text.chat',return_value=(prediction,{'digest':'abc'},{'eval_count':10})):
+            result,_=extract(sources,{})
+        self.assertEqual(result['extraction']['assertions'][0]['source_id'],'uuid-real:0')
+        self.assertEqual(result['raw_extraction']['assertions'][0]['source_id'],'S1')
+        self.assertEqual(result['normalizations'][0]['reason'],'prompt_alias')
+
+    def test_unknown_source_is_resolved_only_by_unique_exact_quote(self):
+        sources=[{'id':'a','text':'Semáforo apagado.'},{'id':'b','text':'Otro mensaje.'}]
+        prediction={'assertions':[{'source_id':'inventado','variable':'descripcion_dano',
+            'literal':'Semáforo apagado','interpretation':None}],'summary':None}
+        with patch('semaforos.adapters.text.chat',return_value=(prediction,{},{})):
+            result,_=extract(sources,{})
+        self.assertEqual(result['extraction']['assertions'][0]['source_id'],'a')
+        self.assertEqual(result['normalizations'][0]['reason'],'unique_literal_match')
+
+    def test_ambiguous_quote_does_not_repair_unknown_source(self):
+        sources=[{'id':'a','text':'Está apagado.'},{'id':'b','text':'Está apagado.'}]
+        prediction={'assertions':[{'source_id':'inventado','variable':'descripcion_dano',
+            'literal':'Está apagado','interpretation':None}],'summary':None}
+        with patch('semaforos.adapters.text.chat',return_value=(prediction,{},{})):
+            with self.assertRaisesRegex(ValueError,'unknown_source'):extract(sources,{})
+
     def test_errors_identify_static_validation_failure_without_leaking_inputs(self):
         self.assertEqual(safe_error_code(ValueError('unbacked_quote')), 'unbacked_quote')
         self.assertEqual(safe_error_code(ValueError('citizen name and text')), 'ValueError')
