@@ -19,6 +19,8 @@ def run_trial(store, root, config, stage, experiment, runner=None):
             # Elegir la entrada más pequeña que ya falló. No muestra contenido ciudadano.
             source=c.execute('''SELECT * FROM jobs WHERE stage=%s AND state='failed'
                 ORDER BY length(payload::text),created_at LIMIT 1''',(stage,)).fetchone()
+            # La próxima transacción debe tener un now() posterior al alta del trabajo.
+            c.commit()
             if not source:raise ValueError('no_failed_source_for_trial')
             cfg=deepcopy(config);cfg['max_attempts']=1
             ident=store.enqueue(source['evidence_id'],stage,experiment,cfg,source['payload'])
