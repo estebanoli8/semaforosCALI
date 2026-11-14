@@ -12,7 +12,8 @@
 <section><div class="sectionTitle"><h2>Agregar conversaciones</h2><span class="tag">ZIP · carga reanudable</span></div>
 <label for="experiment">Nombre del experimento</label><input id="experiment" value="exploracion-local-v1" maxlength="100" required>
 <label for="files">Selecciona los ZIP de WhatsApp</label><input id="files" type="file" accept=".zip,application/zip" multiple>
-<p class="muted">Puedes agregar más lotes mientras el trabajador procesa. Si se interrumpe la subida, vuelve a seleccionar los mismos archivos: comprobaremos los bloques guardados antes de continuar. Los nombres repetidos no se sobrescriben.</p>
+<p class="muted">Selecciona juntos los ZIP del lote. Para cada nombre base se envía solo el archivo con el sufijo numérico más alto, o el ZIP sin sufijo si es el único. Si se interrumpe la subida, vuelve a seleccionar los mismos archivos para reanudar.</p>
+<p id="zipSelection" role="status" class="muted"></p>
 <div class="inline"><button id="upload">Subir y poner en cola</button><button id="pause" class="secondary" disabled>Pausar subida</button></div>
 <progress id="progress" max="100" value="0"></progress><p id="uploadStatus" role="status"></p>
 <details><summary>Registro de esta carga</summary><ul id="uploadLog"></ul></details>

@@ -16,11 +16,13 @@ No se promete almacenamiento infinito: la carga depende del espacio libre y de l
 
 ## Interrupciones y versiones
 
+- Selecciona todos los ZIP juntos en el panel. Antes de transmitirlos, el navegador agrupa nombres base y conserva el sufijo numérico terminal más alto. Por ejemplo, `Chat.zip`, `Chat (2).zip` y `Chat (10).zip` envían solo `Chat (10).zip`. Si el grupo no tiene sufijos, se envía el ZIP normal. El panel muestra el conteo y el registro de versiones omitidas.
+- La selección aplica a los archivos elegidos para esa carga. Las conversaciones y sesiones ya existentes se conservan.
 - Recargar/cerrar la página no detiene el trabajador. Para reanudar una subida incompleta hay que entrar y volver a seleccionar el mismo ZIP.
 - Los bloques previos se reenvían y verifican; esto consume red pero evita confiar en nombres/fechas. Los bloques iguales ya confirmados no vuelven a escribirse.
 - Un bloque distinto para la misma sesión produce `resume_content_mismatch`. El operador cancela la carga incompleta y carga el archivo correcto. Nunca se sobrescribe una sesión por llamarse igual.
 - ZIP idéntico con otro nombre conserva ambas referencias de archivo fuente, pero comparte conversación/evidencias/tareas del mismo experimento, configuración y versión de código.
-- ZIP ampliado o cambiado conserva otra versión de contenido. Su asociación con conversaciones/reportes anteriores requiere la futura consolidación; `(1)` y `(2)` no prueban que una versión sustituya a otra.
+- Los ZIP de contenido distinto enviados en cargas separadas conservan sus versiones de contenido. La comparación de exportaciones sigue disponible para revisar el historial.
 - Una caída entre escribir disco y confirmar offset descarta la cola no confirmada al reanudar. Una caída después de importar pero antes de confirmar la carga recupera la importación idempotentemente.
 - Tres interrupciones de importación llevan a error. Los ZIP corruptos se marcan de inmediato sin frenar los otros. Reintentar es explícito y conserva el ZIP; cancelar elimina solo la copia temporal, no las evidencias previamente persistidas.
 

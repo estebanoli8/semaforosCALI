@@ -11,6 +11,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const page=await browser.newPage({viewport:{width:1440,height:1100}});
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
+    const uploadedNames=[];
     let report=null,relation=null,showSyntheticJob=false,curationLabel=null;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
@@ -61,6 +62,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       else if(path==='/uploads'&&request.method()==='GET')result={total:session?1:0,items:session?[session]:[]};
       else if(path==='/uploads'&&request.method()==='POST'){
         const body=request.postDataJSON();assert.equal(body.experiment_id,'exploracion-local-v1');
+        uploadedNames.push(body.name);
         session={id:'synthetic-id',original_name:body.name,size_bytes:body.size,received_bytes:0,state:'receiving',experiment_id:body.experiment_id};result=session;
       }else if(path.endsWith('/chunk')){
         const data=request.postDataBuffer(),offset=Number(url.searchParams.get('offset'));
@@ -80,13 +82,26 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#token').fill('x'.repeat(32));await page.getByRole('button',{name:'Entrar',exact:true}).click();
     await page.locator('#workspace').waitFor({state:'visible'});
     assert.equal(await page.locator('#conversations').textContent(),'103');
-    await page.locator('#files').setInputFiles({name:'Conversación sintética (1).zip',mimeType:'application/zip',buffer:file});
+    const chosenNames = await page.evaluate(() => selectZipVersions([
+      {name:'Chat (1).zip'}, {name:'Chat (10).ZIP'}, {name:'Chat (2).zip'},
+      {name:'Chat.zip'}, {name:'Otra conversación.zip'}, {name:'Incidente (Sur).zip'}
+    ]).map(group => group.winner.name));
+    assert.deepEqual(chosenNames,['Chat (10).ZIP','Otra conversación.zip','Incidente (Sur).zip']);
+    await page.locator('#files').setInputFiles([
+      {name:'Conversación sintética (1).zip',mimeType:'application/zip',buffer:Buffer.from('older')},
+      {name:'Conversación sintética (3).zip',mimeType:'application/zip',buffer:file},
+      {name:'Conversación sintética.zip',mimeType:'application/zip',buffer:Buffer.from('base')},
+      {name:'Conversación sintética (2).zip',mimeType:'application/zip',buffer:Buffer.from('old')}
+    ]);
+    assert.match(await page.locator('#zipSelection').textContent(),/1 ZIP para subir · 3 versiones repetidas omitidas/);
     await page.locator('#upload').click();
     await page.waitForFunction(()=>!document.getElementById('upload').disabled);
     assert.equal(session.received_bytes,chunkSize);assert.equal(session.state,'receiving');
     await page.locator('#upload').click();
     await page.waitForFunction(()=>!document.getElementById('upload').disabled);
     assert.equal(session.state,'queued');assert.equal(replays,1);assert.equal(chunks,3);
+    assert.deepEqual(uploadedNames,['Conversación sintética (3).zip']);
+    assert.match(await page.locator('#uploadLog').textContent(),/Conversación sintética \(2\)\.zip · omitido/);
     showSyntheticJob=true;await page.evaluate(()=>refresh());
     assert.match(await page.locator('#overallStatus').textContent(),/1 de 2 tareas conocidas/);
     assert.equal(await page.locator('#overallProgress').getAttribute('value'),'50');
