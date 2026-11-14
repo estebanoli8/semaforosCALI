@@ -11,7 +11,7 @@ from .worker import execute_child
 
 
 def run_trial(store, root, config, stage, experiment, runner=None):
-    if stage not in ('text','lights'):raise ValueError('invalid_trial_stage')
+    if stage!='text':raise ValueError('invalid_trial_stage')
     with store.connect() as c:
         if not c.execute('SELECT pg_try_advisory_lock(%s) AS acquired',(LOCK_KEY,)).fetchone()['acquired']:
             raise RuntimeError('worker_still_running')
@@ -55,7 +55,7 @@ def main():
     if os.getenv('SC_PROCESS','all').strip().lower()!='api':
         raise SystemExit('DETENIDO: desplegar primero con SC_PROCESS=api para mantener la cola detenida.')
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--stage',choices=['text','lights'],required=True)
+    parser.add_argument('--stage',choices=['text'],required=True)
     parser.add_argument('--experiment',default='prueba-controlada-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     args=parser.parse_args()
     print('Iniciando una sola tarea de '+args.stage+'. El avance aparece en el panel privado.',flush=True)

@@ -1,21 +1,5 @@
-"""Validación de predicciones. Nunca confundir incertidumbre con una luz apagada."""
+"""Validación de predicciones."""
 import math
-
-
-def lights(value):
-    if not isinstance(value, dict):raise ValueError('invalid_lights')
-    result = {}
-    for key in ('red','yellow','green'):
-        item = value.get(key)
-        if item is not None and type(item) is not bool:raise ValueError('light_requires_boolean_or_null')
-        result[key] = item
-    states = list(result.values())
-    result['reading_state'] = ('alguna_visible' if True in states else
-                               'ninguna_visible' if all(v is False for v in states) else 'indeterminado')
-    reason = value.get('reason')
-    if reason is not None and not isinstance(reason, str):raise ValueError('invalid_reason')
-    result['reason'] = reason
-    return result
 
 
 def boxes(items, width, height):

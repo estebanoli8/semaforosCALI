@@ -106,18 +106,31 @@ def prepare(source, output, source_info):
         if not frame_path.exists():
             raise ValueError('Falta un fotograma seleccionado')
         row.update(archivo=frame_path.name, sha256=sha256(frame_path), analisis='pendiente_mlfoto')
-    audio_stream = next((s for s in streams if s.get('codec_type') == 'audio'), None)
+    audio_streams = sorted(
+        (stream for stream in streams if stream.get('codec_type') == 'audio'),
+        key=lambda stream: not stream.get('disposition', {}).get('default'),
+    )
     audio = None
-    if audio_stream:
+    audio_state = 'sin_pista_audio'
+    for stream in audio_streams:
         audio_path = target / 'audio.wav'
-        run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-threads', '1', '-i', str(source),
-             '-map', f'0:{audio_stream["index"]}', '-vn', '-ac', '1', '-ar', '16000',
-             '-c:a', 'pcm_s16le', str(audio_path)], timeout=300)
+        try:
+            run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-threads', '1', '-i', str(source),
+                 '-map', f'0:{stream["index"]}', '-vn', '-ac', '1', '-ar', '16000',
+                 '-c:a', 'pcm_s16le', str(audio_path)], timeout=300)
+            if audio_path.stat().st_size <= 78:
+                raise ValueError('Audio vacío')
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            audio_path.unlink(missing_ok=True)
+            audio_state = 'error_extraccion'
+            continue
         audio = dict(archivo=audio_path.name, sha256=sha256(audio_path),
-                     analisis='pendiente_mlaudio', stream_index=audio_stream['index'])
+                     analisis='pendiente_mlaudio', stream_index=stream['index'])
+        audio_state = 'extraido'
+        break
     result = dict(version='0.3-video', muestreo_version=SAMPLING_VERSION,
                   fuente=source_info, sha256_video=digest, duracion_segundos=duration,
-                  fotogramas=selected, audio=audio, estado_audio='extraido' if audio else 'sin_pista_audio',
+                  fotogramas=selected, audio=audio, estado_audio=audio_state,
                   creado_unix=time.time(), duracion_procesamiento_s=round(time.time()-started, 3),
                   ffmpeg_version=run(['ffmpeg', '-version']).decode().splitlines()[0],
                   regla='Último frame de segundos 1..10; primero de los últimos cinco intervalos; sin duplicar intervalos. El intervalo final parcial cuenta.')

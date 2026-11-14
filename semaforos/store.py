@@ -58,7 +58,7 @@ class Store:
                 (uuid4(),conversation_id,parent,modality,original_name,path,digest,size,Jsonb(metadata or {}))).fetchone()['id']
 
     def enqueue(self, evidence_id, stage, experiment, config, payload=None, connection=None):
-        if stage not in ('audio','detect','lights','text','video'):raise ValueError('invalid_stage')
+        if stage not in ('audio','detect','text','video'):raise ValueError('invalid_stage')
         payload=payload or {}
         with (nullcontext(connection) if connection is not None else self.connect()) as c:
             evidence=c.execute('SELECT sha256 FROM evidence WHERE id=%s',(evidence_id,)).fetchone()
@@ -82,7 +82,7 @@ class Store:
             FROM jobs j JOIN evidence e ON e.id=j.evidence_id
             WHERE (j.state='pending' AND j.available_at<=now() OR j.state='running' AND j.lease_until<now())
             AND j.attempts<j.max_attempts AND (%s::uuid IS NULL OR j.id=%s::uuid)
-            AND NOT (j.payload ? 'superseded_by_review')
+            AND j.stage<>'lights' AND NOT (j.payload ? 'superseded_by_review')
             AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
             ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
             (job_id,job_id,conversation_id,conversation_id)).fetchone()
@@ -111,10 +111,6 @@ class Store:
             for i,item in enumerate(r['objects']):
                 c.execute('INSERT INTO detections(id,run_id,evidence_id,object_index,bbox,score,width,height) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
                     (uuid4(),job['run_id'],job['evidence_id'],i,Jsonb(item['bbox']),item['score'],r['width'],r['height']))
-        elif job['stage']=='lights':
-            for item in output['result']['objects']:
-                c.execute('INSERT INTO light_readings(id,run_id,detection_id,red,yellow,green,reading_state,reason) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
-                    (uuid4(),job['run_id'],item['detection_id'],item['red'],item['yellow'],item['green'],item['reading_state'],item.get('reason')))
         c.execute("UPDATE jobs SET state='completed',lease_until=NULL,updated_at=now() WHERE id=%s",(job['id'],))
         c.commit()
 
@@ -132,7 +128,7 @@ class Store:
         with self.connect() as c:
             row=c.execute('SELECT stage,state,attempts FROM jobs WHERE id=%s FOR UPDATE',(ident,)).fetchone()
             if row is None:return 'not_found'
-            if row['stage'] not in ('text','lights') or row['state']!='failed':return 'not_failed_model'
+            if row['stage'] not in ('text','audio') or row['state']!='failed':return 'not_failed_model'
             if row['attempts']>=5:return 'retry_limit_reached'
             c.execute('''UPDATE jobs SET state='pending',max_attempts=attempts+1,
                 available_at=now(),lease_token=NULL,lease_until=NULL,updated_at=now()

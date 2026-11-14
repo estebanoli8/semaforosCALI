@@ -29,7 +29,7 @@ flowchart TD
 | media | Audio y cuadros de video | Derivados, tiempos y origen |
 | adapters/audio | Transcripción | Texto completo y segmentos |
 | adapters/text | Extracción semántica | Afirmaciones con referencias |
-| adapters/vision | Cajas y luces | Objetos, luces y no determinables |
+| adapters/vision | Detección | Objetos y cajas anotadas |
 | geography | Candidatos geográficos | Coordenadas, fuente y estado |
 | reports | Consolidación de hechos | Reportes versionados, sin multiplicar por cuadros |
 | evaluation | Etiquetas y métricas | Resultados por versión y conjunto |

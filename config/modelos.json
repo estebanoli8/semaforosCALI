@@ -19,16 +19,6 @@
     "max_detections": 50,
     "cpu_threads": 2
   },
-  "lights": {
-    "mode": "manual_review",
-    "model": "qwen3-vl:2b",
-    "expected_digest": null,
-    "min_crop_side": 16,
-    "context": 4096,
-    "max_tokens": 200,
-    "threads": 2,
-    "keep_alive": "2m"
-  },
   "text": {
     "model": "qwen3:4b-instruct",
     "expected_digest": null,

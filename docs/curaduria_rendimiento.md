@@ -23,7 +23,9 @@ Recursos iniciales del VPS de 6 vCPU y aproximadamente 12 GB RAM:
 
 Reservas CPU 0. Mantener los montajes `/data`, `/models` y `/root/.ollama` actuales. Estas cifras son límites, no memoria reservada ni núcleos nuevos. La ocupación real y los demás servicios del VPS determinan el margen.
 
-`SC_PARALLEL=1` inicia dos trabajadores: texto/luces y audio/detección/video. Cada carril admite una tarea a la vez. Los bloqueos de PostgreSQL impiden duplicar un carril y excluyen al trabajador diagnóstico o antiguo. El modelo de texto solicita cuatro hilos y permanece residente durante 30 minutos; multimedia usa dos hilos para los modelos y FFmpeg uno por extracción. Luces permanece en revisión humana; no reactivar Qwen-VL para esta comparación.
+`SC_PARALLEL=1` inicia dos trabajadores: texto y audio/detección/video. Cada carril admite una tarea a la vez. Los bloqueos de PostgreSQL impiden duplicar un carril y excluyen al trabajador diagnóstico o antiguo. El modelo de texto solicita cuatro hilos y permanece residente durante 30 minutos; multimedia usa dos hilos para los modelos y FFmpeg uno por extracción.
+
+Consulta [Audio y microreportes](audio_y_microreportes.md) para el flujo actual.
 
 ## Uso y validación
 

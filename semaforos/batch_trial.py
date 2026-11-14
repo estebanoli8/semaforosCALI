@@ -11,7 +11,7 @@ from .uploads import Uploads
 from .worker import execute_child, expand
 
 
-LABELS={'audio':'Audio → texto','detect':'Detección de semáforos','lights':'Revisión de luces',
+LABELS={'audio':'Audio → texto','detect':'Detección de semáforos',
         'text':'Extracción de datos','video':'Preparación de video'}
 
 
@@ -24,7 +24,7 @@ def queued(store):
 def counts(store, conversation_id):
     with store.connect() as c:
         rows=c.execute("""SELECT j.state,count(*) AS n FROM jobs j JOIN evidence e ON e.id=j.evidence_id
-            WHERE e.conversation_id=%s GROUP BY j.state""",(conversation_id,)).fetchall()
+            WHERE e.conversation_id=%s AND j.stage<>'lights' GROUP BY j.state""",(conversation_id,)).fetchall()
     return {row['state']:row['n'] for row in rows}
 
 

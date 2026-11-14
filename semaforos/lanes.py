@@ -12,7 +12,7 @@ from .findings import index_pending
 
 def once(store,root,lane,runner=None):
     key=LOCK_KEY+(10 if lane=='text' else 11)
-    stages=['text','lights'] if lane=='text' else ['audio','detect','video']
+    stages=['text'] if lane=='text' else ['audio','detect','video']
     with store.connect() as c:
         if not c.execute('SELECT pg_try_advisory_lock(%s) AS ok',(key,)).fetchone()['ok']:
             c.commit();return False

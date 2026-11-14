@@ -14,7 +14,7 @@ from .config import load_config, storage_root
 from .store import Store
 from .files import contained
 from .messages import chat_sources
-from .evaluation import wer, detection_metrics, light_metrics
+from .evaluation import wer, detection_metrics
 from .reports import ReportError, change as change_report, detail as report_detail
 
 
@@ -69,7 +69,7 @@ def compact_result(stage, output):
     """Resumen acotado para la tabla; la predicción completa sigue en /runs/{id}."""
     output=output if isinstance(output,dict) else {}
     if stage=='audio':return {'text':str(output.get('text') or '')[:500]}
-    if stage in ('detect','lights'):return {'objects':list(output.get('objects') or [])[:50]}
+    if stage=='detect':return {'objects':list(output.get('objects') or [])[:50]}
     if stage=='text':
         extraction=output.get('extraction') if isinstance(output.get('extraction'),dict) else output
         return {'extraction':{'summary':extraction.get('summary'),
@@ -98,7 +98,7 @@ def create_app(store=None, root=None, config=None, token=None):
                 FROM jobs j JOIN evidence e ON e.id=j.evidence_id
                 LEFT JOIN evidence parent ON parent.id=e.parent_id
                 LEFT JOIN LATERAL (SELECT * FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1) r ON true
-                WHERE e.conversation_id=%s ORDER BY e.created_at,j.created_at,j.id LIMIT 100 OFFSET %s''',
+                WHERE e.conversation_id=%s AND j.stage<>'lights' ORDER BY e.created_at,j.created_at,j.id LIMIT 100 OFFSET %s''',
                 (conversation_id,offset)).fetchall()
         from .messages import team_audio,is_team_sender
         visible=[]
@@ -121,6 +121,16 @@ def create_app(store=None, root=None, config=None, token=None):
                 except (OSError,ValueError):pass
             visible.append(row)
         return {'items':visible,'next_offset':offset+100 if len(rows)==100 else None}
+
+    @private.get('/conversations/{conversation_id}/micro-report')
+    def micro_report(conversation_id:UUID):
+        from .conversation_summary import conversation_report
+        return conversation_report(store, conversation_id)
+
+    @private.get('/report-statistics')
+    def report_statistics():
+        from .conversation_summary import statistics
+        return statistics(store)
 
     @private.post('/runs/{run_id}/curation')
     def save_curation(run_id:UUID,body:Curation):
@@ -150,8 +160,8 @@ def create_app(store=None, root=None, config=None, token=None):
                 JOIN conversations v ON v.id=e.conversation_id
                 LEFT JOIN evidence parent ON parent.id=e.parent_id
                 LEFT JOIN LATERAL (SELECT id,error_code FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1) r ON true
-                ORDER BY j.created_at DESC,j.id LIMIT %s OFFSET %s''',(limit,offset)).fetchall()
-            total=c.execute('SELECT count(*) AS n FROM jobs').fetchone()['n']
+                WHERE j.stage<>'lights' ORDER BY j.created_at DESC,j.id LIMIT %s OFFSET %s''',(limit,offset)).fetchall()
+            total=c.execute("SELECT count(*) AS n FROM jobs WHERE stage<>'lights'").fetchone()['n']
         for row in rows:
             if row['state']=='running' and row['run_id']:
                 path=contained(root,f"runs/{row['run_id']}/progress.json")
@@ -195,9 +205,9 @@ def create_app(store=None, root=None, config=None, token=None):
                 e.modality,v.id AS conversation_id,v.original_name AS conversation_name,
                 (SELECT count(*) FROM reviews rv WHERE rv.run_id=r.id) AS review_count
                 FROM runs r JOIN jobs j ON j.id=r.job_id JOIN evidence e ON e.id=j.evidence_id
-                JOIN conversations v ON v.id=e.conversation_id WHERE r.state='completed'
+                JOIN conversations v ON v.id=e.conversation_id WHERE r.state='completed' AND j.stage<>'lights'
                 ORDER BY r.finished_at DESC,r.id LIMIT %s OFFSET %s''',(limit,offset)).fetchall()
-            total=c.execute("SELECT count(*) AS n FROM runs WHERE state='completed'").fetchone()['n']
+            total=c.execute("SELECT count(*) AS n FROM runs r JOIN jobs j ON j.id=r.job_id WHERE r.state='completed' AND j.stage<>'lights'").fetchone()['n']
         for row in rows:
             row['output_summary']=compact_result(row['stage'],row.pop('output',None))
         return {'total':total,'items':rows}
@@ -264,19 +274,15 @@ def create_app(store=None, root=None, config=None, token=None):
         return {'total':total,'items':rows}
     @private.post('/reviews')
     def review(body:Review):
-        if body.field not in ('transcription','boxes','lights','assertions'):raise HTTPException(400,'Campo de revisión inválido')
+        if body.field not in ('transcription','boxes','assertions'):raise HTTPException(400,'Campo de revisión inválido')
         with store.connect() as c:r=c.execute("SELECT r.*,j.stage FROM runs r JOIN jobs j ON j.id=r.job_id WHERE r.id=%s AND r.state='completed'",(body.run_id,)).fetchone()
         if not r:raise HTTPException(404,'Predicción completada no encontrada')
-        if {'transcription':'audio','boxes':'detect','lights':'lights','assertions':'text'}[body.field]!=r['stage']:raise HTTPException(400,'Campo incompatible con la etapa')
+        if {'transcription':'audio','boxes':'detect','assertions':'text'}[body.field]!=r['stage']:raise HTTPException(400,'Campo incompatible con la etapa')
         # Validar antes de registrar la etiqueta; las observaciones sin métrica se conservan.
         metrics=None
         try:
             if body.field=='transcription':metrics=wer(body.label,r['output']['text'])
             elif body.field=='boxes':metrics=detection_metrics(r['output']['objects'],body.label)
-            elif body.field=='lights':
-                if not isinstance(body.label,dict) or 'detection_id' not in body.label:raise ValueError()
-                obj=next(x for x in r['output']['objects'] if x['detection_id']==body.label['detection_id'])
-                metrics=light_metrics(obj,body.label)
             elif not isinstance(body.label,list):raise ValueError()
         except (ValueError,TypeError,KeyError,StopIteration):raise HTTPException(400,'Formato de etiqueta inválido')
         ident=store.review(body.run_id,body.field,body.label,body.reviewer,body.comment)
@@ -417,7 +423,7 @@ def create_app(store=None, root=None, config=None, token=None):
         with store.connect() as c:
             conversations=c.execute('SELECT count(*) AS n FROM conversations').fetchone()['n']
             evidence=c.execute('SELECT count(*) AS n FROM evidence WHERE parent_id IS NULL').fetchone()['n']
-            states=c.execute("SELECT stage,state,count(*) AS n FROM jobs WHERE NOT (payload ? 'superseded_by_review') GROUP BY stage,state ORDER BY stage,state").fetchall()
+            states=c.execute("SELECT stage,state,count(*) AS n FROM jobs WHERE stage<>'lights' AND NOT (payload ? 'superseded_by_review') GROUP BY stage,state ORDER BY stage,state").fetchall()
             index_errors=c.execute("SELECT count(*) AS n FROM finding_indexes WHERE state='error'").fetchone()['n']
         return {'conversations':conversations,'original_files':evidence,'tasks':states,
                 'disk_free_bytes':shutil.disk_usage(root).free,'disk_reserve_bytes':uploads.reserve,'chunk_bytes':CHUNK_BYTES,'finding_index_errors':index_errors}

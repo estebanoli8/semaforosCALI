@@ -2,11 +2,20 @@
 import fcntl
 import os
 import subprocess
+import wave
 from .files import contained
 
 
 def mono_audio(root,source,digest):
     if len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):raise ValueError('invalid_digest')
+    # Video audio is already produced in the format Whisper expects.
+    if source.suffix.lower()=='.wav':
+        try:
+            with wave.open(str(source),'rb') as wav:
+                if (wav.getnchannels(),wav.getframerate(),wav.getsampwidth())==(1,16000,2):
+                    return source
+        except (wave.Error,EOFError):
+            pass
     folder=contained(root,'derived/audio-v1/'+digest);folder.mkdir(parents=True,exist_ok=True)
     target=folder/'mono-16000.wav'
     with (folder/'prepare.lock').open('a') as lock:
