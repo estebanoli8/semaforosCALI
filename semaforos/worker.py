@@ -35,9 +35,17 @@ def expand(store, root, conversation_id=None):
         try:
             result=job['output'];config=job['config'];experiment=job['experiment_id']
             if job['stage']=='audio':
+                from .messages import team_audio
+                if team_audio(store,job['evidence_id']):
+                    with store.connect() as c:c.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(job['id'],))
+                    continue
                 origin='audio_video' if job['payload'].get('from_video') else 'audio_whatsapp'
-                for sources in text_chunks(result['text'],job['run_id'],origin):
-                    store.enqueue(job['evidence_id'],'text',experiment,config,{'sources':sources,'transcription_run_id':str(job['run_id'])})
+                with store.connect() as c:
+                    current=c.execute('SELECT expanded_at FROM jobs WHERE id=%s FOR UPDATE',(job['id'],)).fetchone()
+                    if current['expanded_at'] is not None:continue
+                    for sources in text_chunks(result['text'],job['run_id'],origin):
+                        store.enqueue(job['evidence_id'],'text',experiment,config,{'sources':sources,'transcription_run_id':str(job['run_id'])},connection=c)
+                    c.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(job['id'],))
             elif job['stage']=='detect':
                 with store.connect() as c:
                     detections=c.execute('SELECT id,bbox FROM detections WHERE run_id=%s ORDER BY object_index',(job['run_id'],)).fetchall()
@@ -86,10 +94,27 @@ def once(store, root, runner=None):
 
 
 def execute_child(store,c,job,root,progress_reporter=None):
+    from .messages import team_audio,is_team_sender
+    # Recheck older queued jobs too; sender inference is never based on proximity.
+    if job['stage']=='audio' and team_audio(store,job['evidence_id']):
+        return {'result':{'text':'','segments':[],'excluded':'team_sender_audio'},
+                'metrics':{'wall_seconds':0},'model_identity':{'provider':'sender_filter'}}
+    payload=dict(job['payload'])
+    if job['stage']=='text':
+        mids=[s['message_id'] for s in payload.get('sources',[]) if s.get('message_id')]
+        if mids:
+            with store.connect() as lookup:
+                rows=lookup.execute('SELECT id,sender_visible FROM messages WHERE id=ANY(%s::uuid[])',(mids,)).fetchall()
+            excluded={str(row['id']) for row in rows if is_team_sender(row['sender_visible'])}
+            payload['sources']=[s for s in payload.get('sources',[]) if s.get('message_id') not in excluded]
+        if team_audio(store,job['evidence_id']):payload['sources']=[]
+        if not payload.get('sources'):
+            return {'result':{'extraction':{'summary':'','assertions':[]},'excluded':'team_sender'},
+                    'metrics':{'wall_seconds':0},'model_identity':{'provider':'sender_filter'}}
     folder=contained(root,f"runs/{job['run_id']}");folder.mkdir(parents=True,exist_ok=True)
     spec={'storage':str(root),'path':job['storage_path'],'sha256':job['sha256'],
           'output_dir':str(folder.relative_to(root)/'artifacts'),'stage':job['stage'],
-          'config':job['config'],'payload':job['payload'],'evidence_id':str(job['evidence_id'])}
+          'config':job['config'],'payload':payload,'evidence_id':str(job['evidence_id'])}
     atomic_json(folder/'input.json',spec)
     result_file=folder/'output.json'
     progress_file=folder/'progress.json';last_progress=[None]

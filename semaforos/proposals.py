@@ -1,5 +1,6 @@
 """Deterministic grouping suggestions. Never create reports or infer incident identity."""
 from collections import defaultdict
+from .findings import ACTIVE_FINDING
 
 RULE_VERSION='message-grouping-v1'
 
@@ -18,10 +19,10 @@ def classify(findings):
 
 def proposals(store,conversation_id,offset=0,limit=20):
     with store.connect() as c:
-        total=c.execute('SELECT count(DISTINCT coalesce(message_id,id)) AS n FROM findings WHERE conversation_id=%s',(conversation_id,)).fetchone()['n']
-        groups=c.execute('SELECT coalesce(message_id,id) AS gid FROM findings WHERE conversation_id=%s GROUP BY 1 ORDER BY 1 LIMIT %s OFFSET %s',(conversation_id,limit,offset)).fetchall()
+        total=c.execute('SELECT count(DISTINCT coalesce(message_id,id)) AS n FROM findings f WHERE conversation_id=%s AND '+ACTIVE_FINDING,(conversation_id,)).fetchone()['n']
+        groups=c.execute('SELECT coalesce(message_id,id) AS gid FROM findings f WHERE conversation_id=%s AND '+ACTIVE_FINDING+' GROUP BY 1 ORDER BY 1 LIMIT %s OFFSET %s',(conversation_id,limit,offset)).fetchall()
         ids=[g['gid'] for g in groups]
-        rows=c.execute('SELECT * FROM findings WHERE conversation_id=%s AND coalesce(message_id,id)=ANY(%s::uuid[]) ORDER BY created_at,id LIMIT 2001',(conversation_id,ids)).fetchall()
+        rows=c.execute('SELECT * FROM findings f WHERE conversation_id=%s AND coalesce(message_id,id)=ANY(%s::uuid[]) AND '+ACTIVE_FINDING+' ORDER BY created_at,id LIMIT 2001',(conversation_id,ids)).fetchall()
         if len(rows)>2000:raise ValueError('reduce_page_size_too_many_findings')
         grouped=defaultdict(list)
         for row in rows:grouped[row['message_id'] or row['id']].append(row)

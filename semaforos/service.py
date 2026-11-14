@@ -11,12 +11,13 @@ def commands(mode):
         "--factory", "--host", "0.0.0.0", "--port", "8000",
     ]
     worker = [sys.executable, "-m", "semaforos", "worker"]
+    workers = [[sys.executable,'-m','semaforos.lanes',lane] for lane in ('text','media')] if os.getenv('SC_PARALLEL','0')=='1' else [worker]
     if mode == "api":
         return [api]
     if mode == "worker":
-        return [worker]
+        return workers
     if mode == "all":
-        return [api, worker]
+        return [api, *workers]
     raise ValueError("SC_PROCESS_must_be_api_worker_or_all")
 
 

@@ -1,0 +1,8 @@
+.curationGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.curationCard{border:1px solid #d9e4dd;border-radius:12px;padding:16px;margin:12px 0;min-width:0}
+.curationCard h3{font-size:1rem;overflow-wrap:anywhere}.curationCard .modelText{max-height:220px;overflow:auto;white-space:pre-wrap}
+.curationImage{display:block;max-width:100%;max-height:240px;object-fit:contain;margin:auto}
+.curationCard audio{width:100%;max-width:340px}.curationCard button{margin:4px}
+.curationCard textarea{width:100%;min-height:160px}summary{cursor:pointer;padding:12px;font-weight:600}
+.curationConversation{border-top:1px solid #d9e4dd;margin-top:16px}.curationCard progress{width:100%}
+.curationCard .jobProgress small{display:block}.curationCard img:not([src]){min-height:120px;min-width:160px;background:#f0f5f2}

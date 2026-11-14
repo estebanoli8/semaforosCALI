@@ -1,6 +1,7 @@
 """PostgreSQL exclusivo de Semáforos; cambios de esquema explícitos y versionados."""
 import json
 import os
+from contextlib import nullcontext
 from pathlib import Path
 from uuid import uuid4
 import psycopg
@@ -56,10 +57,10 @@ class Store:
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
                 (uuid4(),conversation_id,parent,modality,original_name,path,digest,size,Jsonb(metadata or {}))).fetchone()['id']
 
-    def enqueue(self, evidence_id, stage, experiment, config, payload=None):
+    def enqueue(self, evidence_id, stage, experiment, config, payload=None, connection=None):
         if stage not in ('audio','detect','lights','text','video'):raise ValueError('invalid_stage')
         payload=payload or {}
-        with self.connect() as c:
+        with (nullcontext(connection) if connection is not None else self.connect()) as c:
             evidence=c.execute('SELECT sha256 FROM evidence WHERE id=%s',(evidence_id,)).fetchone()
             if not evidence:raise ValueError('unknown_evidence')
             key=canonical_hash([str(evidence_id),evidence['sha256'],stage,experiment,config,payload,__version__])
@@ -81,6 +82,7 @@ class Store:
             FROM jobs j JOIN evidence e ON e.id=j.evidence_id
             WHERE (j.state='pending' AND j.available_at<=now() OR j.state='running' AND j.lease_until<now())
             AND j.attempts<j.max_attempts AND (%s::uuid IS NULL OR j.id=%s::uuid)
+            AND NOT (j.payload ? 'superseded_by_review')
             AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
             ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
             (job_id,job_id,conversation_id,conversation_id)).fetchone()
