@@ -146,6 +146,34 @@ async function candidates(){
   for(let offset=0;;offset+=200){const result=await api('/uploads?offset='+offset+'&limit=200');items.push(...result.items.filter(x=>x.state==='receiving'));if(offset+200>=result.total)break;}
   return items;
 }
+function selectZipVersions(files) {
+  const groups = new Map();
+  for (const file of files) {
+    if (!/\.zip$/i.test(file.name)) continue;
+    const stem = file.name.slice(0, -4);
+    const suffix = stem.match(/^(.+?) *\(([0-9]+)\)$/);
+    const base = suffix ? suffix[1] : stem;
+    const version = suffix ? BigInt(suffix[2]) : -1n;
+    const group = groups.get(base);
+    if (!group) {
+      groups.set(base, { winner: file, version, skipped: [] });
+    } else if (version > group.version) {
+      group.skipped.push(group.winner);
+      group.winner = file;
+      group.version = version;
+    } else {
+      group.skipped.push(file);
+    }
+  }
+  return [...groups.values()];
+}
+function showZipSelection(groups) {
+  const omitted = groups.reduce((total, group) => total + group.skipped.length, 0);
+  $('zipSelection').textContent = groups.length
+    ? `${groups.length} ZIP para subir · ${omitted} versiones repetidas omitidas.`
+    : 'Selecciona archivos ZIP.';
+}
+$('files').addEventListener('change', () => showZipSelection(selectZipVersions($('files').files)));
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 function log(message){const li=document.createElement('li');li.textContent=message;$('uploadLog').append(li);}
 $('loginForm').onsubmit=async event=>{event.preventDefault();token=$('token').value;try{await refresh();$('token').value='';$('login').hidden=true;$('workspace').hidden=false;notice('');clearInterval(timer);timer=setInterval(()=>refresh().catch(e=>notice(e.message)),5000);}catch(e){token='';notice('No se pudo entrar: '+e.message);}};
@@ -157,9 +185,16 @@ $('previousModelResults').onclick=()=>{modelResultOffset=Math.max(0,modelResultO
 $('nextModelResults').onclick=()=>{modelResultOffset+=pageSize;loadModelResults().catch(e=>notice(e.message));};
 $('upload').onclick=async()=>{
   if(busy)return;
-  const files=[...$('files').files],experiment=$('experiment').value.trim();
+  const groups = selectZipVersions($('files').files);
+  const files = groups.map(group => group.winner);
+  const experiment = $('experiment').value.trim();
   if(!files.length||!experiment){notice('Selecciona archivos ZIP y un nombre de experimento.');return;}
   if(!crypto.subtle){notice('La carga requiere HTTPS para verificar las huellas de los archivos.');return;}
+  showZipSelection(groups);
+  $('uploadLog').replaceChildren();
+  for (const group of groups) {
+    for (const file of group.skipped) log(file.name + ' · omitido. Se envía ' + group.winner.name);
+  }
   busy=true;pause=false;$('upload').disabled=true;$('pause').disabled=false;$('files').disabled=true;$('experiment').disabled=true;
   try{
     const resumable=await candidates();
