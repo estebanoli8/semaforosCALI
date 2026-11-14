@@ -16,8 +16,8 @@ def team_audio(store, evidence_id):
     """Exclude only explicitly linked audio when every identified sender is the team."""
     with store.connect() as c:
         rows=c.execute("""SELECT m.sender_visible FROM message_attachments a
-            JOIN messages m ON m.id=a.message_id WHERE a.evidence_id=%s AND a.state='linked'""",
-            (evidence_id,)).fetchall()
+            JOIN messages m ON m.id=a.message_id WHERE a.evidence_id IN (%s,(SELECT parent_id FROM evidence WHERE id=%s)) AND a.state='linked'""",
+            (evidence_id,evidence_id)).fetchall()
     return bool(rows) and all(is_team_sender(r['sender_visible']) for r in rows)
 
 

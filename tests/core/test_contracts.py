@@ -1,16 +1,10 @@
 import unittest
-from semaforos.contracts import assertions, boxes, lights
-from semaforos.evaluation import wer,detection_metrics,light_metrics
+from semaforos.contracts import assertions, boxes
+from semaforos.evaluation import wer,detection_metrics
 from semaforos.worker import text_chunks
 
 
 class ContractTests(unittest.TestCase):
-    def test_dark_unknown_and_multiple_lights_are_different(self):
-        self.assertEqual(lights({'red':False,'yellow':False,'green':False})['reading_state'],'ninguna_visible')
-        self.assertEqual(lights({'red':False,'yellow':None,'green':False})['reading_state'],'indeterminado')
-        self.assertEqual(lights({'red':True,'yellow':None,'green':True})['reading_state'],'alguna_visible')
-        with self.assertRaises(ValueError):lights({'red':'false'})
-
     def test_reject_unbacked_quote_or_invented_source(self):
         source={'m1':'Casi se chocan dos motos en quinta con quinta.'}
         good={'assertions':[{'source_id':'m1','variable':'afectaciones','literal':'Casi se chocan dos motos'}]}
@@ -34,4 +28,3 @@ class ContractTests(unittest.TestCase):
         self.assertIsNone(wer('','hola')['wer'])
         self.assertEqual(wer('semáforo rojo','semáforo verde')['wer'],.5)
         self.assertEqual(detection_metrics([{'bbox':[0,0,10,10],'score':.9}],[[0,0,10,10]])['recall'],1)
-        self.assertEqual(light_metrics({'red':True,'yellow':None,'green':None},{'red':True,'yellow':False,'green':False})['coverage'],1/3)

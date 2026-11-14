@@ -31,7 +31,7 @@ def detail(c, ident):
         family AS (SELECT id FROM ancestors UNION SELECT e.id FROM evidence e JOIN family p ON e.parent_id=p.id)
         SELECT e.id,e.parent_id,e.modality,e.original_name,e.sha256 FROM evidence e JOIN family f ON e.id=f.id ORDER BY e.created_at,e.id''',(ident,messages)).fetchall()
     eids=[e['id'] for e in evidence]
-    jobs=c.execute('SELECT state,expanded_at,expansion_error,updated_at FROM jobs WHERE evidence_id=ANY(%s::uuid[])',(eids,)).fetchall()
+    jobs=c.execute("SELECT state,expanded_at,expansion_error,updated_at FROM jobs WHERE evidence_id=ANY(%s::uuid[]) AND stage<>'lights'",(eids,)).fetchall()
     if any(j['state']=='running' for j in jobs):processing='procesando'
     elif any(j['state']=='pending' for j in jobs):processing='en_cola'
     elif any(j['state']=='failed' or j['expansion_error'] for j in jobs):processing='parcial_con_errores'

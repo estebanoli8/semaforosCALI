@@ -15,8 +15,8 @@ SAFE_ERROR_CODES = frozenset({
     'model_not_installed', 'model_digest_mismatch', 'truncated_model_output',
     'model_changed_during_run', 'text_requires_sources', 'invalid_assertions', 'invalid_assertion_item',
     'invalid_variable', 'unknown_source', 'unbacked_quote',
-    'invalid_interpretation', 'invalid_summary', 'invalid_lights',
-    'light_requires_boolean_or_null', 'invalid_reason', 'invalid_image_size',
+    'invalid_interpretation', 'invalid_summary',
+    'invalid_image_size',
     'invalid_bbox', 'bbox_outside_image', 'invalid_score',
 })
 
@@ -55,9 +55,6 @@ def execute(spec):
         from .adapters.vision import detect
         progress(phase='Analizando imagen')
         result,identity=detect(path,config,out)
-    elif stage=='lights':
-        from .adapters.vision import read_lights
-        result,identity=read_lights(path,spec['payload']['detections'],config,on_progress=progress)
     elif stage=='text':
         from .adapters.text import extract
         progress(phase='Generando JSON')

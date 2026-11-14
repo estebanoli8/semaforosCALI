@@ -15,11 +15,21 @@ class AdapterFailure(Exception):
         super().__init__(self.error_code)
 
 
-def text_chunks(text, source_id, origin):
-    # Los fragmentos se conservan completos en cada salida; no generan reportes por sí solos.
-    for offset in range(0,len(text),2400):
-        yield [{'id':f'{source_id}:{offset}','text':text[offset:offset+2400],
-                'origin':origin,'source_id':str(source_id),'char_start':offset}]
+def text_chunks(text, source_id, origin, start=0):
+    # Prefer sentence or word boundaries and retain exact offsets in the transcript.
+    offset = 0
+    while offset < len(text):
+        end = min(offset + 1800, len(text))
+        if end < len(text):
+            boundary = max(text.rfind(mark, offset + 900, end) for mark in ('. ', '? ', '! ', '\n'))
+            if boundary < 0:
+                boundary = text.rfind(' ', offset + 900, end)
+            if boundary >= 0:
+                end = boundary + 1
+        absolute = start + offset
+        yield [{'id':f'{source_id}:{absolute}', 'text':text[offset:end],
+                'origin':origin, 'source_id':str(source_id), 'char_start':absolute}]
+        offset = end
 
 
 def expand(store, root, conversation_id=None):
@@ -28,7 +38,7 @@ def expand(store, root, conversation_id=None):
         rows=c.execute("""SELECT j.*,r.id AS run_id,r.output,e.storage_path,e.conversation_id,e.modality
             FROM jobs j JOIN runs r ON r.job_id=j.id AND r.state='completed'
             JOIN evidence e ON e.id=j.evidence_id
-            WHERE j.state='completed' AND j.expanded_at IS NULL
+            WHERE j.stage<>'lights' AND j.state='completed' AND j.expanded_at IS NULL
             AND (%s::uuid IS NULL OR e.conversation_id=%s::uuid)
             ORDER BY j.created_at LIMIT 20""",(conversation_id,conversation_id)).fetchall()
     for job in rows:
@@ -43,14 +53,16 @@ def expand(store, root, conversation_id=None):
                 with store.connect() as c:
                     current=c.execute('SELECT expanded_at FROM jobs WHERE id=%s FOR UPDATE',(job['id'],)).fetchone()
                     if current['expanded_at'] is not None:continue
-                    for sources in text_chunks(result['text'],job['run_id'],origin):
+                    parts = result.get('analysis_parts')
+                    sources_by_part = (
+                        (sources for part in parts for sources in
+                         text_chunks(part['text'], job['run_id'], origin, part['offset']))
+                        if parts is not None else text_chunks(result['text'], job['run_id'], origin)
+                    )
+                    for sources in sources_by_part:
                         store.enqueue(job['evidence_id'],'text',experiment,config,{'sources':sources,'transcription_run_id':str(job['run_id'])},connection=c)
                     c.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(job['id'],))
             elif job['stage']=='detect':
-                with store.connect() as c:
-                    detections=c.execute('SELECT id,bbox FROM detections WHERE run_id=%s ORDER BY object_index',(job['run_id'],)).fetchall()
-                if detections:
-                    store.enqueue(job['evidence_id'],'lights',experiment,config,{'detections':[{'id':str(d['id']),'bbox':d['bbox']} for d in detections],'detector_run_id':str(job['run_id'])})
                 path=Path(result['annotation'])
                 relative=str(path.resolve().relative_to(root.resolve()));contained(root,relative)
                 store.evidence(job['conversation_id'],relative,'annotated',path.name,path.stat().st_size,sha256(path),{'run_id':str(job['run_id'])},job['evidence_id'])

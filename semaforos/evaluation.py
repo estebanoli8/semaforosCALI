@@ -32,15 +32,3 @@ def detection_metrics(predicted, labels, threshold=0.5):
             if overlap>=threshold:used.add(index);matches+=1
     return {'precision':matches/len(predicted) if predicted else None,'recall':matches/len(labels) if labels else None,
             'true_positive':matches,'false_positive':len(predicted)-matches,'false_negative':len(labels)-matches,'iou_threshold':threshold}
-
-
-def light_metrics(predicted, labels):
-    correct=0;answered=0;known=0
-    for key in ('red','yellow','green'):
-        truth=labels.get(key);guess=predicted.get(key)
-        if truth is not None and type(truth) is not bool:raise ValueError('invalid_light_label')
-        if truth is None:continue
-        known+=1
-        if guess is not None:answered+=1;correct+=int(guess==truth)
-    return {'accuracy_answered':correct/answered if answered else None,'coverage':answered/known if known else None,
-            'known_lights':known,'answered_lights':answered,'correct_lights':correct}

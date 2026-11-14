@@ -31,7 +31,7 @@ class PostgresTests(unittest.TestCase):
 
     def test_migrations_are_repeatable(self):
         self.store.migrate()
-        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],5)
+        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],6)
 
     def test_controlled_trial_does_not_consume_old_queue(self):
         from semaforos.trial import run_trial
@@ -113,15 +113,27 @@ class PostgresTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT error_code FROM runs WHERE job_id=%s',(ident,)).fetchone()['error_code'],'unbacked_quote')
             self.assertEqual(self.store.claim(c)['attempts'],2)
 
-    def test_failed_lights_can_retry_without_restarting_video(self):
-        config=copy.deepcopy(self.config);config['max_attempts']=1
-        ident=self.store.enqueue(self.eid,'lights','A',config,{'detections':[]})
-        with self.store.connect() as c:
-            job=self.store.claim(c)
-            self.store.fail(c,job,'invalid_lights')
-        self.assertEqual(self.store.retry_failed_model(ident),'queued')
-        with self.store.connect() as c:
-            self.assertEqual(self.store.claim(c)['attempts'],2)
+    def test_micro_report_gps_and_statistics_require_private_access(self):
+        from fastapi.testclient import TestClient
+        from semaforos.api import create_app
+
+        archive = self.root / 'gps-fixture.zip'
+        with zipfile.ZipFile(archive, 'w') as zipped:
+            zipped.writestr('_chat.txt', '[13/11/26, 18:00] Vecina: Semáforo dañado hace tres días. GPS: 3.432,-76.531')
+        imported = import_zip(self.store, self.root, archive, self.config, 'gps-test')
+        path = '/conversations/' + imported['conversation_id'] + '/micro-report'
+        auth = {'Authorization': 'Bearer ' + 'x'*32}
+        with TestClient(create_app(self.store, self.root, self.config, 'x'*32)) as client:
+            self.assertEqual(client.get(path).status_code, 401)
+            response = client.get(path, headers=auth)
+            self.assertEqual(response.status_code, 200)
+            report = response.json()['reporters'][0]
+            self.assertEqual(report['reporter'], 'Vecina')
+            self.assertEqual(report['reported_estimate'], 1)
+            self.assertEqual(report['gps'][0]['longitude'], -76.531)
+            stats = client.get('/report-statistics', headers=auth).json()
+            self.assertEqual(stats['groups_with_gps'], 1)
+            self.assertEqual(stats['topics']['falla_mencionada'], 1)
 
     def test_job_origin_and_annotated_image_are_private(self):
         from fastapi.testclient import TestClient
