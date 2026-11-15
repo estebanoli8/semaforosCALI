@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Métricas de modelos · Semáforos Cali</title>
+  <link rel="stylesheet" href="/panel.css">
+  <link rel="stylesheet" href="/metrics.css">
+  <script defer src="/metrics.js"></script>
+</head>
+<body>
+<header><span class="mark" aria-hidden="true">● ● ●</span><span>SEMÁFOROS CALI</span><span class="private">Acceso privado</span></header>
+<main class="metrics-page">
+  <div class="metrics-intro">
+    <a href="/">← Procesamiento</a>
+    <h1>Desempeño de los modelos</h1>
+    <p>Revisa cómo terminó cada tarea, cuánto tardó y qué calidad pudimos medir con referencias humanas.</p>
+  </div>
+  <section id="login">
+    <h2>Entrar al portal de métricas</h2>
+    <form id="metricsLogin">
+      <label for="metricsToken">Clave de acceso del equipo</label>
+      <div class="inline"><input id="metricsToken" type="password" autocomplete="off" required minlength="32"><button>Entrar</button></div>
+    </form>
+  </section>
+  <p id="metricsStatus" role="status" aria-live="polite"></p>
+  <div id="metricsWorkspace" hidden>
+    <div class="metrics-controls">
+      <div><label for="metricsExperiment">Experimento</label><select id="metricsExperiment"><option value="">Todos</option></select></div>
+      <div><label for="metricsPeriod">Fecha de creación de la tarea</label>
+        <select id="metricsPeriod"><option value="">Todo el historial</option><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="90">Últimos 90 días</option></select></div>
+      <button id="metricsRefresh">Actualizar</button><button id="metricsLogout" class="secondary">Salir</button>
+    </div>
+    <div id="metricsContent" aria-busy="false"></div>
+    <p class="muted" id="metricsCut"></p>
+  </div>
+</main>
+</body>
+</html>

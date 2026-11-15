@@ -4,7 +4,7 @@ import json
 import os
 from uuid import UUID
 from typing import Literal
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 from pathlib import Path
@@ -414,6 +414,15 @@ def create_app(store=None, root=None, config=None, token=None):
     def panel_js():return FileResponse(Path(__file__).with_name('web')/'panel.js',media_type='text/javascript')
     @app.get('/panel.css')
     def panel_css():return FileResponse(Path(__file__).with_name('web')/'panel.css',media_type='text/css')
+    @app.get('/metricas')
+    def metrics_panel():
+        return FileResponse(Path(__file__).with_name('web')/'metrics.html')
+    @app.get('/metrics.js')
+    def metrics_script():
+        return FileResponse(Path(__file__).with_name('web')/'metrics.js',media_type='text/javascript')
+    @app.get('/metrics.css')
+    def metrics_style():
+        return FileResponse(Path(__file__).with_name('web')/'metrics.css',media_type='text/css')
     @app.get('/review.js')
     def review_js():return FileResponse(Path(__file__).with_name('web')/'review.js',media_type='text/javascript')
 
@@ -427,6 +436,12 @@ def create_app(store=None, root=None, config=None, token=None):
             index_errors=c.execute("SELECT count(*) AS n FROM finding_indexes WHERE state='error'").fetchone()['n']
         return {'conversations':conversations,'original_files':evidence,'tasks':states,
                 'disk_free_bytes':shutil.disk_usage(root).free,'disk_reserve_bytes':uploads.reserve,'chunk_bytes':CHUNK_BYTES,'finding_index_errors':index_errors}
+
+    @private.get('/model-metrics')
+    def model_metrics(experiment: str | None = Query(None, min_length=1, max_length=100),
+                      days: int | None = Query(None, ge=1, le=365)):
+        from .model_dashboard import dashboard
+        return dashboard(store, experiment, days)
 
     @private.post('/uploads')
     def start_upload(body:UploadStart):
