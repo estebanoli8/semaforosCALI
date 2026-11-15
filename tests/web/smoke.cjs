@@ -251,6 +251,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
     await page.screenshot({path:'test-artifacts/metrics-mobile.png',fullPage:true});
     await page.getByRole('button',{name:'Salir',exact:true}).click();
+    await page.locator('#login').waitFor({state:'visible'});
     assert.equal(await page.locator('#metricsContent').textContent(),'');
     assert.deepEqual(errors,[]);
     await page.goto('http://127.0.0.1:8765/reportes?ubicaciones=1');

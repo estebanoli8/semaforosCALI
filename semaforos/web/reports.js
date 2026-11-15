@@ -331,7 +331,7 @@ function evidenceCard(file) {
   card.className='evidence-card';
   const local=['image','video','frame'].includes(file.type);
   card.append(node('h4',local?(file.crossing||'Cruce por identificar'):file.name));
-  if(local)card.append(node('small',file.name));
+  if(local)card.append(node('small',file.name+(file.time!=null?' · segundo '+file.time:'')));
   if(file.sent_at)card.append(node('p','Enviado '+formatDate(file.sent_at)));
   if(local && file.crossing_source) {
     const source=node('small','Ubicación asociada por '+file.crossing_source+
@@ -380,8 +380,30 @@ function renderEvidence(data) {
     nav.append(link);
     const cards=node('div');
     cards.className='evidence-grid';
-    cards.append(...files.map(evidenceCard));
-    group.append(heading,cards);list.append(group);
+    group.append(heading);
+    if(type==='frame') {
+      const byVideo=new Map();
+      for(const file of files) {
+        const frames=byVideo.get(file.video_id)||[];
+        frames.push(file);
+        byVideo.set(file.video_id,frames);
+      }
+      for(const [videoId,frames] of byVideo) {
+        const video=data.items.find(item=>item.id===videoId);
+        const bucket=node('details');
+        const grid=node('div');
+        grid.className='evidence-grid';
+        grid.append(...frames.sort((a,b)=>(a.time??0)-(b.time??0)).map(evidenceCard));
+        bucket.open=selectedType==='frame' && byVideo.size===1;
+        bucket.append(node('summary',(video?.crossing||video?.name||'Video')+' · '+frames.length+
+          (frames.length===1?' fotograma':' fotogramas')),grid);
+        group.append(bucket);
+      }
+    } else {
+      cards.append(...files.map(evidenceCard));
+      group.append(cards);
+    }
+    list.append(group);
   }
   if(!list.children.length)list.append(node('p','No hay archivos en el corte actual.'));
   byId('reportLogin').hidden=true;

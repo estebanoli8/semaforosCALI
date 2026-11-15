@@ -46,7 +46,10 @@ def session_identity(key, cookie):
 
 
 def require_same_origin(request):
-    origin = urlsplit(request.headers.get('origin',''))
+    try:
+        origin = urlsplit(request.headers.get('origin',''))
+    except ValueError as exc:
+        raise HTTPException(403,'Origen de solicitud inválido') from exc
     if (origin.scheme not in ('https','http') or origin.netloc!=request.url.netloc
             or request.headers.get('sec-fetch-site') not in (None,'same-origin')):
         raise HTTPException(403,'Origen de solicitud inválido')

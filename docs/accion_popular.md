@@ -19,6 +19,24 @@ El panel privado reúne Reporte, Desempeño de modelos, Detalle de reporte y Car
    ```
 
 3. Selecciona una conversación con chat, voz y video. Usa su UUID del registro de conversación, no el código visible del reporte. Ejecuta el piloto y espera sus resultados.
+   La consulta privada `GET /conversations` lista los UUID. También puedes buscar una candidata en la terminal del contenedor:
+
+   ```bash
+   /usr/local/bin/python - <<'PYCODE'
+   from semaforos.store import Store
+   with Store().connect() as db:
+       for row in db.execute("""
+           SELECT e.conversation_id AS id
+           FROM evidence e
+           GROUP BY e.conversation_id
+           HAVING bool_or(e.modality='chat')
+               AND bool_or(e.modality='audio' AND e.parent_id IS NULL)
+               AND bool_or(e.modality='audio' AND e.parent_id IS NOT NULL)
+           ORDER BY max(e.created_at) DESC LIMIT 5
+       """):
+           print(row['id'])
+   PYCODE
+   ```
 
    ```bash
    /usr/local/bin/python -m semaforos.reprocess --conversation UUID_DE_CONVERSACION --apply

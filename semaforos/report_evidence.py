@@ -19,7 +19,7 @@ def attach_evidence(c, items, evidence_code=None, *, detail=False, export=False)
     conversation_ids = list({item['_conversation_id'] for item in items})
     inventories = defaultdict(dict)
     for row in c.execute('''
-        SELECT e.conversation_id,e.id,e.parent_id,e.modality,e.original_name,p.modality AS parent_modality,
+        SELECT e.conversation_id,e.id,e.parent_id,e.modality,e.original_name,e.metadata,p.modality AS parent_modality,
                ARRAY(SELECT m.sender_visible FROM message_attachments a JOIN messages m ON m.id=a.message_id
                      WHERE a.state='linked' AND a.evidence_id IN (e.id,e.parent_id)) AS senders
         FROM evidence e LEFT JOIN evidence p ON p.id=e.parent_id
@@ -75,6 +75,10 @@ def attach_evidence(c, items, evidence_code=None, *, detail=False, export=False)
                 from .source_detail import enrich
                 result.update(situacion_presentada=item.get('situacion_presentada') or item['description'],
                               date=item['date'])
+                for file in result['items']:
+                    if file['type']=='frame':
+                        frame=inventory[file['id']]
+                        file.update(video_id=frame['parent_id'],time=frame['metadata'].get('segundo'))
                 enrich(c,conversation_id,result['items'],inventory)
             return result
     return dict(Counter(counted.values()))
