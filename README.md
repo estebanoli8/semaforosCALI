@@ -10,9 +10,9 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Ingesta | Carga reanudable de ZIP de WhatsApp. En una misma selección se sube la versión con el sufijo numérico mayor para cada nombre base. |
 | Procesamiento | Dos carriles, texto y multimedia. Conserva texto literal y originales, enlaza derivaciones y muestra el avance por tarea y conversación. |
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
-| Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
-| Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` incluye automáticamente los resultados disponibles de conversaciones procesadas como registros preliminares anonimizados. También muestra las versiones depuradas que el equipo haya editado. Despliegue y prueba en el VPS pendientes de confirmación. |
-| Acción Popular | Detalle por ciudadano y conversación, PDF enlazado, evaluación humana por modelo y alerta de formato de WhatsApp. La medición de la tanda en el VPS queda pendiente. |
+| Métricas de modelos | Portal privado disponible en el VPS. Filtra por experimento. El corte final de `detalle-qwen-v3` y su comparación emparejada siguen pendientes. |
+| Informe y publicación | PDF general fechado y evidencias protegidas. La ruta pública `/semaforos` ofrece registros preliminares anonimizados y versiones depuradas. La cartografía del panel de Acción Popular queda para una fase posterior. |
+| Acción Popular | Detalle por ciudadano y conversación, PDF enlazado, evaluación humana por modelo y alerta de formato de WhatsApp. Se confirmó el arranque de la tanda en el VPS. |
 | Entregables pendientes | Cartografía en fase posterior, dominio definitivo y correo por reporte en n8n. |
 
 Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
@@ -21,7 +21,7 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 
 - El panel privado reúne cada conversación bajo el ciudadano, con tres columnas, estado del análisis y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
 - El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. El tiempo de inferencia y la exactitud se medirán en el VPS con la tanda pendiente. Los conteos cubren entrada, no reintentos.
-- [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md).
+- [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
 
 ## Flujo y modelos
 
@@ -51,13 +51,19 @@ Las tareas son ejecuciones por etapa. Una detección completada significa que te
 
 Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y medidos, la generación del JSON consumió el **78 %** del tiempo observado. Son casos seleccionados por un fallo previo. El rendimiento con conversaciones nuevas y la calidad de sus extracciones se evalúan por separado.
 
+### Piloto del 15 de noviembre de 2026
+
+El operador preparó `detalle-qwen-v3` sobre **33 conversaciones con trabajo pendiente y 3 cargas ZIP en trámite**. Se crearon **19 lotes de texto** y se reencolaron **17 tareas**. El primer corte tras el Deploy confirmó `SC_PROCESS=all`, dos trabajadores activos, **15 tareas completadas**, **2 en ejecución** y **74 pendientes**. Había **1 ZIP importado** y **2 en recepción**. La extracción de texto tenía **1 tarea en curso y 37 pendientes** en ese corte.
+
+El corte confirma arranque y avance paralelo. La completitud final por campo, las extracciones compactas finalizadas y la mejora de tiempo requieren un corte posterior. El antecedente del 14 de noviembre y el análisis offline de 22 TXT tienen poblaciones y unidades distintas. Para evaluar velocidad, medir sobre las mismas fuentes con ambos perfiles y registrar la calidad por campo. [Registro y método de validación](docs/detalle_qwen.md#piloto-en-el-vps).
+
 ## Uso y verificación
 
 - **Acción Popular.** Entra una vez con la clave del equipo. **Detalle de reporte** muestra las conversaciones y el botón de PDF del mismo corte. Cada enlace de evidencia abre la conversación en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
 - **Reproceso.** Tras desplegar, ejecuta `python -m semaforos.reprocess` para estimar el lote. Prueba con `--conversation UUID --apply` antes de encolar todo con `--apply`. Se reutilizan las detecciones visuales y los artefactos del video. Consulta el [procedimiento de Acción Popular](docs/accion_popular.md).
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
 - La consulta pública genera su corte a partir de lo que ya está guardado. La tabla prioriza cruces identificados e incluye conteos por intersección y por tipo de evidencia. Los indicadores superiores cuentan reportes, fotos, videos, audios y cruces. Los enlaces abren un visor privado compartido por los tipos de evidencia, con lectura del TXT completo, fotos con cajas cuando hay detecciones y audio y video a 1×, 1,5× o 2×. Se ingresa una vez por sesión con la clave del equipo. El mapa aparece debajo de la tabla mientras no tenga puntos. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.
-- El portal de métricas se abre desde **Métricas de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.
+- El portal de métricas se abre desde **Desempeño de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.
 - Para desplegar desde `main`, usar **Easypanel → semaforos → semaforos-core → Deploy**. Planificarlo al terminar el lote, porque el reemplazo del contenedor interrumpe las tareas activas.
 - [GitHub Actions](https://github.com/estebanoli8/semaforosCALI/actions) verifica el núcleo con PostgreSQL y el panel con Chromium, incluida la vista móvil. Las pruebas usan datos sintéticos. Las cifras del piloto provienen del VPS.
 

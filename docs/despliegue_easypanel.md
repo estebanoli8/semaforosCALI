@@ -1,12 +1,14 @@
 # Despliegue del núcleo en Easypanel
 
-Para la interfaz de curaduría y activación de dos carriles, seguir [Curaduría y rendimiento](curaduria_rendimiento.md). La configuración de un solo trabajador descrita abajo sigue siendo compatible si `SC_PARALLEL` no está activado.
+Para la cola de `detalle-qwen-v3`, seguir [Detalle y Qwen](detalle_qwen.md#preparar-la-tanda-pendiente-en-easypanel). Para verificar el avance desde el contenedor, usar el [corte de solo lectura](observabilidad.md#corte-agregado-del-piloto). La configuración de un solo trabajador sigue siendo compatible si `SC_PARALLEL` no está activado.
 
 El despliegue inicial usa un solo servicio de aplicación con `SC_PROCESS=all`.
 La API privada y el trabajador comparten el mismo volumen de evidencias, mientras
 PostgreSQL y Ollama permanecen como servicios independientes del proyecto
 `semaforos`. Al iniciar, el servicio aplica las migraciones versionadas bajo un
 bloqueo de PostgreSQL y luego supervisa ambos procesos.
+
+En un solo servicio de aplicación, `SC_PROCESS=api` deja disponible el panel y pausa la ejecución automática al desplegar. Tras preparar la cola, volver a `SC_PROCESS=all` y desplegar inicia el trabajador interno. Con `SC_PARALLEL=1`, el servicio inicia dos procesos, uno de texto y otro multimedia. En la variante con servicio de trabajador separado, el núcleo permanece en `api` y el otro servicio utiliza `SC_PROCESS=worker`.
 
 ## Servicios
 

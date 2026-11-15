@@ -1,5 +1,11 @@
 # Historial
 
+## 2026-11-15 — Piloto de detalle ciudadano y Qwen compacto
+
+- El [PR #18](https://github.com/estebanoli8/semaforosCALI/pull/18) integró los cuatro campos del detalle, el PDF enlazado, las evaluaciones humanas y la alerta de formato del TXT.
+- El corte del operador confirmó la preparación de la cola y el arranque de los carriles de texto y multimedia en el VPS. El cierre de la tanda y la comparación de velocidad siguen pendientes.
+- Se actualizó el procedimiento de verificación con una consulta de solo lectura, estados de carga y criterios de cobertura, calidad y comparación emparejada.
+
 ## 2026-11-15 — Acción Popular
 
 - Sesión compartida de equipo, detalle en pestaña nueva, informe del mismo corte y evaluación por evidencia.

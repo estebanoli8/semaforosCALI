@@ -44,3 +44,21 @@ Tras cotejar el piloto, se puede estimar un reproceso histórico de texto con `/
 Sube una conversación sintética de WhatsApp con una cabecera compatible y la otra con un separador de fecha/hora cambiado. Ejemplo compatible `[15/11/26, 10:00] Ciudadana: Calle 16 con Carrera 80.`. Ejemplo de cambio `15/11/26 10.05 | Ciudadana | El semáforo sigue dañado.`.
 
 En **Desempeño de modelos**, abre **Alertas del formato de WhatsApp**. Una cabecera probable desconocida o una variante de separador de remitente o adjunto produce aviso. El estado pasa a degradado si el TXT con contenido carece de cabeceras reconocidas, o si la fracción de cabeceras probables no interpretables supera el 10 %. Las líneas de continuación no cuentan como cabeceras. Una línea que parece cabecera y usa un formato desconocido se separa sin atribuirla al remitente anterior. Se guarda el archivo, el conteo y la versión del parser para reproducir el caso. El monitor detecta cambios estructurales observables. Un cambio semántico con la misma estructura requiere evaluación humana.
+
+## Piloto en el VPS
+
+Corte del operador del 15 de noviembre de 2026, después del Deploy. El comando de preparación encontró 33 conversaciones importadas con 36 tareas pendientes. Creó 19 lotes de chat y reencoló 17 tareas de otras etapas o fuentes. Tres cargas ZIP en trámite también recibieron la configuración nueva. Una carga todavía en recepción requiere completar la subida antes de entrar a la importación.
+
+| Etapa | Completadas | En ejecución | Pendientes |
+| --- | ---: | ---: | ---: |
+| Audio | 1 | 0 | 3 |
+| Detección de semáforos | 11 | 1 | 34 |
+| Extracción de texto | 0 | 1 | 37 |
+| Preparación de video | 3 | 0 | 0 |
+| Total del corte | 15 | 2 | 74 |
+
+El contenedor informó `SC_PROCESS=all` y dos trabajadores. Un ZIP figuraba importado y dos en recepción. Los derivados de la preparación multimedia explican que el número de tareas conocidas aumente durante una tanda. La tabla es una fotografía del arranque. El corte final, la cobertura de los cuatro campos y los tiempos de Qwen siguen pendientes de verificación en el VPS.
+
+Para comprobar la función en producción, cotejar en **Detalle de reporte** conversaciones del piloto con referencias de cada campo. Distinguir análisis pendiente, parcial y terminado. Un campo ausente al terminar figura como **No detectado**. La cantidad de conversaciones con un valor mide cobertura. La validación del contenido requiere revisar el original; también cuenta si se omitió un valor que sí aparecía en la fuente. Una ubicación sola puede originar una inferencia de daño que se identifica como tal.
+
+La comprobación técnica de `compact-v1` usa la identidad guardada en los runs completados. El valor de hilos es el solicitado al modelo. En **Desempeño de modelos** filtrar `detalle-qwen-v3`. Reportar el denominador al lado de los tiempos. [Consulta agregada](observabilidad.md#corte-agregado-del-piloto) y [protocolo de comparación](experimentos.md#comparación-de-qwen-en-el-vps).
