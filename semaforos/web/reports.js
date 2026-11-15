@@ -113,7 +113,7 @@ function catalog(row) {
     const count=counts[key];
     const link=node('a',count+' '+labels[count===1?0:1]);
     link.href='/reportes?'+new URLSearchParams({registro:row.code,tipo:key});
-    link.target='_blank';link.rel='noopener noreferrer';link.title='Abrir con la clave del equipo';
+    link.title='Abrir el visor del equipo';
     entry.append(link);list.append(entry);
   }
   details.append(list);cell.append(details);
@@ -135,8 +135,21 @@ function renderRows() {
       button.type='button';button.className='secondary';button.onclick=()=>edit(row);
       code.append(button);tr.append(code);
     }
-    const description=node('td',row.description||'Por consolidar');
+    const description=node('td');
     description.className='report-description';
+    if(row.preliminary && row.description) {
+      const list=node('ul');
+      list.className='report-points';
+      for(const part of row.description.split(' · ')) {
+        const entry=node('li');
+        const separator=part.indexOf(': ');
+        if(separator>0) {
+          entry.append(node('strong',part.slice(0,separator)+': '),document.createTextNode(part.slice(separator+2)));
+        } else entry.textContent=part;
+        list.append(entry);
+      }
+      description.append(list);
+    } else description.textContent=row.description||'Por consolidar';
     tr.append(node('td',formatDate(row.date)),node('td',row.intersection||'Por revisar'),description);
     if(team) tr.append(node('td',[states[row.revision],states[row.processing]].filter(Boolean).join(' · ')));
     tr.append(node('td',row.reports_at_intersection??'—'));
@@ -153,12 +166,19 @@ function render() {
   const stats=byId('reportStats');
   stats.replaceChildren();
   const latest = view.items.reduce((date,row)=>row.date && (!date || new Date(row.date)>new Date(date))?row.date:date,null);
-  const statsItems = [[team?'Reportes del corte':'Registros del corte',view.items.length],
-    [team?'Reportes ubicados':'Registros ubicados',view.map.markers.length],['Último registro',formatDate(latest)]];
-  if(!team) statsItems.unshift(['Conversaciones incluidas',view.conversations_included??0]);
-  for(const [label,count] of statsItems) {
+  const total=view.totals||{};
+  const conversations=view.conversations_included??0;
+  const statsItems = team ? [['Reportes del corte',view.items.length],
+    ['Reportes ubicados',view.map.markers.length],['Último registro',formatDate(latest)]] :
+    [['Reportes',total.records??view.items.length,conversations+(conversations===1?' conversación incluida':' conversaciones incluidas')],
+     ['Fotos',total.photos??0],['Videos',total.videos??0],
+     ['Audios',total.audios??0,(total.whatsapp_audios??0)+' de WhatsApp · '+(total.video_audios??0)+' de video'],
+     ['Cruces identificados',total.crossings??0]];
+  for(const [label,count,detail] of statsItems) {
     const card=node('article');
-    card.append(node('span',label),node('strong',count));stats.append(card);
+    card.append(node('span',label),node('strong',count));
+    if(detail)card.append(node('small',detail));
+    stats.append(card);
   }
   byId('mapSelection').textContent='';
   drawMap(view);
@@ -166,22 +186,127 @@ function render() {
   else byId('recordsPanel').after(byId('mapPanel'));
   renderRows();
 }
+function playable(file) {
+  const isVideo=file.type==='video';
+  const wrap=node('div');
+  const player=node(isVideo?'video':'audio');
+  player.controls=true;
+  player.preload='none';
+  player.src=file.content;
+  if(isVideo)player.playsInline=true;
+  const speeds=node('div');
+  speeds.className='evidence-speeds';
+  speeds.setAttribute('aria-label','Velocidad de reproducción');
+  speeds.append(node('span','Velocidad'));
+  for(const [rate,label] of [[1,'1×'],[1.5,'1,5×'],[2,'2×']]) {
+    const button=node('button',label);
+    button.type='button';
+    button.className='secondary';
+    button.setAttribute('aria-pressed',String(rate===1));
+    button.onclick=()=>{
+      player.defaultPlaybackRate=rate;
+      player.playbackRate=rate;
+      for(const control of speeds.querySelectorAll('button'))control.setAttribute('aria-pressed',String(control===button));
+    };
+    speeds.append(button);
+  }
+  player.addEventListener('error',()=>{
+    if(!wrap.querySelector('.media-error')) {
+      const note=node('p','Vista previa no disponible en este navegador. Puedes descargar el archivo.');
+      note.className='media-error muted';
+      wrap.append(note);
+    }
+  });
+  wrap.append(player,speeds);
+  return wrap;
+}
+function chatPreview(file, open) {
+  const details=node('details');
+  const text=node('pre');
+  details.append(node('summary','Leer chat completo'),text);
+  details.addEventListener('toggle',async()=>{
+    if(!details.open || text.dataset.loaded)return;
+    text.dataset.loaded='loading';
+    text.textContent='Abriendo chat…';
+    try {
+      const response=await fetch(file.content,{cache:'no-store'});
+      if(!response.ok)throw Error('El chat no está disponible. Actualiza el visor para volver a abrirlo.');
+      text.textContent=await response.text();
+      text.dataset.loaded='yes';
+    } catch(error) {
+      delete text.dataset.loaded;
+      text.textContent=error.message;
+    }
+  });
+  details.open=open;
+  return details;
+}
+function evidenceCard(file) {
+  const card=node('article');
+  card.className='evidence-card';
+  const title=node('h4',file.name);
+  card.append(title);
+  if(file.thumbnail) {
+    const thumb=node('img');
+    thumb.src=file.thumbnail;
+    thumb.loading='lazy';
+    thumb.alt=file.name;
+    thumb.addEventListener('error',()=>{
+      thumb.replaceWith(node('p','Miniatura no disponible. Puedes descargar el original.'));
+    });
+    card.append(thumb);
+  }
+  if(['audio','audio_video','video'].includes(file.type))card.append(playable(file));
+  if(file.type==='chat')card.append(chatPreview(file,selectedType==='chat'));
+  const link=node('a','Descargar original');
+  link.href=file.download;
+  link.download=file.name;
+  card.append(link);
+  return card;
+}
+function renderEvidence(data) {
+  byId('evidenceTitle').textContent=data.intersection?'Evidencias · '+data.intersection:'Evidencias del reporte';
+  byId('evidenceScope').textContent=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
+  const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
+  list.replaceChildren();nav.replaceChildren();
+  for(const [type,labels] of Object.entries(evidenceTypes)) {
+    const files=data.items.filter(item=>item.type===type);
+    if(!files.length)continue;
+    const title=files.length+' '+labels[files.length===1?0:1];
+    const group=node('div');
+    group.id='files-'+type;
+    group.className='evidence-set';
+    const heading=node('h3',title);
+    heading.tabIndex=-1;
+    const link=node('a',title);
+    link.href='#'+group.id;
+    nav.append(link);
+    const cards=node('div');
+    cards.className='evidence-grid';
+    cards.append(...files.map(evidenceCard));
+    group.append(heading,cards);list.append(group);
+  }
+  if(!list.children.length)list.append(node('p','No hay archivos en el corte actual.'));
+  byId('reportLogin').hidden=true;
+  byId('evidenceAccess').hidden=false;
+  byId('reportStatus').textContent='';
+  if(byId('files-'+selectedType))byId('files-'+selectedType).scrollIntoView({block:'start'});
+}
+
 async function loadEvidence(signal) {
   byId('reportStatus').textContent='Consultando evidencias…';
   try {
-    const response=await get('/public-records/'+encodeURIComponent(selectedRecord)+'/evidence',{signal});
+    const response=await fetch('/report-media/records/'+encodeURIComponent(selectedRecord),{signal,cache:'no-store'});
+    if(response.status===401) {
+      byId('evidenceAccess').hidden=true;
+      byId('evidenceFiles').replaceChildren();
+      byId('reportLogin').hidden=false;
+      byId('reportStatus').textContent='';
+      return;
+    }
+    if(!response.ok)throw Error('No se pudo abrir el registro.');
     const data=await response.json();
-    if(signal.aborted)return;
-    const label=evidenceTypes[selectedType]?.[1];
-    const items=label?data.items.filter(item=>item.type===selectedType):data.items;
-    byId('evidenceTitle').textContent=label?'Evidencias · '+label:'Evidencias';
-    byId('evidenceScope').textContent=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
-    const list=byId('evidenceFiles');
-    list.replaceChildren(...items.map(fileItem));
-    if(!items.length)list.append(node('li','No hay archivos de este tipo en el corte actual.'));
-    byId('reportLogin').hidden=true;
-    byId('evidenceAccess').hidden=false;
-    byId('reportStatus').textContent='';
+    if(!signal.aborted)renderEvidence(data);
   } catch(error) {
     if(error.name!=='AbortError')byId('reportStatus').textContent=error.message;
   }
@@ -253,7 +378,7 @@ function edit(row) {
 }
 function logout() {
   request?.abort();request=null;accessKey='';view=null;selected=null;
-  byId('evidenceAccess').hidden=true;byId('evidenceFiles').replaceChildren();
+  byId('evidenceAccess').hidden=true;byId('evidenceFiles').replaceChildren();byId('evidenceTypes').replaceChildren();
   byId('reportWork').hidden=true;byId('editPanel').hidden=true;byId('reportLogin').hidden=false;
   for(const id of ['reportStats','reportRows','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
   byId('locationForm').reset();
@@ -275,16 +400,25 @@ if(!team) {
 }
 byId('teamLinks').hidden=!team;
 byId('updateRecords').onclick=load;
-byId('evidenceLogout').onclick=logout;
+async function signOut() {
+  logout();
+  await fetch('/report-media/session',{method:'DELETE',cache:'no-store'}).catch(()=>{});
+}
+byId('evidenceLogout').onclick=signOut;
 byId('reportSearch').oninput=()=>{page=0;renderRows();};
 byId('prevReport').onclick=()=>{page--;renderRows();};
 byId('nextReport').onclick=()=>{page++;renderRows();};
-byId('reportLogout').onclick=logout;
-byId('reportLoginForm').onsubmit=event=>{
+byId('reportLogout').onclick=signOut;
+byId('reportLoginForm').onsubmit=async event=>{
   event.preventDefault();
   accessKey=byId('reportKey').value;
   byId('reportKey').value='';
-  load();
+  try {
+    await get('/report-media/session',{method:'POST'});
+    await load();
+  } catch(error) {
+    byId('reportStatus').textContent=error.message;
+  }
 };
 byId('locationForm').onsubmit=async event=>{
   event.preventDefault();
@@ -316,4 +450,4 @@ byId('exportPdf').onclick=async()=>{
   } catch(error) {byId('reportStatus').textContent=error.message;}
   finally {button.disabled=false;}
 };
-if(!team)load();
+if(!team || selectedRecord)load();

@@ -477,7 +477,7 @@ def create_app(store=None, root=None, config=None, token=None):
         response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
-        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         return response
 
     # Carcasa sin datos: las operaciones y consultas requieren Bearer.
@@ -559,5 +559,7 @@ def create_app(store=None, root=None, config=None, token=None):
     @private.post('/uploads/{ident}/retry')
     def retry_upload(ident:UUID):return uploads.retry(ident)
 
+    from .report_media import create_media_router
+    app.include_router(create_media_router(store,root,token,auth))
     app.include_router(private)
     return app

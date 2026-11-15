@@ -12,7 +12,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
     const uploadedNames=[];
-    let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false;
+    let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false,mediaSession=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
@@ -24,6 +24,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       if(path==='/semaforos/datos'){
         assert.equal(request.headers().authorization,undefined);
         return route.fulfill({json:{cutoff:'2026-11-14T12:00:00Z',boundary_version:null,conversations_included:1,
+          totals:{records:1,crossings:1,photos:3,videos:1,audios:3,whatsapp_audios:2,video_audios:1},
           items:[{code:'P-SYNTHETIC',date:'2026-11-14T11:00:00Z',intersection:'calle 5 con carrera 70',
             description:'Falla mencionada',revision:'pendiente',processing:'completado',preliminary:true,
             reports_at_intersection:1,evidence_scope:'registro',evidence_counts:{chat:1,audio:2,audio_video:1,image:3}}],
@@ -32,6 +33,26 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
           '/metrics.html','/metrics.js','/metrics.css','/reports.js','/reports.css'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
+      if(path==='/report-media/session'){
+        if(request.method()==='DELETE'){mediaSession=false;return route.fulfill({status:204});}
+        assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
+        mediaSession=true;return route.fulfill({status:204});
+      }
+      if(path.startsWith('/report-media/')) {
+        if(!mediaSession) return route.fulfill({status:401});
+        if(path==='/report-media/records/P-SYNTHETIC'){
+          return route.fulfill({json:{scope:'registro',intersection:'Calle 5 con Carrera 70',
+            items:[['text','chat','chat-sintético.txt'],['image','image','foto-sintética.jpg'],
+              ['audio','audio','voz-sintética.ogg'],['video','video','video-sintético.mp4']]
+              .map(([id,type,name])=>({id,type,name,content:'/report-media/files/'+id+'/content',
+                download:'/report-media/files/'+id+'/download',thumbnail:type==='image'?'/marca-esteban.png':undefined}))}});
+        }
+        if(path==='/report-media/files/text/content')return route.fulfill({contentType:'text/plain; charset=utf-8',
+          body:'Primera línea del chat\nÚltima línea del chat'});
+        if(path==='/report-media/files/text/download')return route.fulfill({contentType:'application/octet-stream',
+          body:'Texto original'});
+        return route.fulfill({status:404});
+      }
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
       if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:showSyntheticJob?[{stage:'detect',state:'completed',n:1},{stage:'text',state:'running',n:1}]:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
@@ -43,10 +64,6 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
       }
-      else if(path==='/public-records/P-SYNTHETIC/evidence'){
-        result={scope:'registro',items:[{id:'file-synthetic',name:'chat-sintético.txt',type:'chat'}],counts:{chat:1}};
-      }
-      else if(path==='/evidence/file-synthetic/download')return route.fulfill({contentType:'text/plain',body:'Texto sintético'});
       else if(path==='/report-map'){
         result={cutoff:'2026-11-14T12:00:00Z',boundary_version:'test',map:{width:720,height:430,
           markers:locationSaved?[{code:'R-000001',x:360,y:250}]:[],polygons:[],grid:[]},
@@ -235,7 +252,9 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/semaforos');
-    await page.getByText('Conversaciones incluidas',{exact:true}).waitFor();
+    await page.getByText('1 conversación incluida',{exact:true}).waitFor();
+    assert.match(await page.locator('#reportStats').textContent(),/Fotos3Videos1Audios3/);
+    assert.match(await page.locator('#reportStats').textContent(),/Cruces identificados1/);
     await page.getByText('calle 5 con carrera 70',{exact:true}).waitFor();
     assert.equal(await page.locator('#recordCodeHeader').isVisible(),false);
     assert.equal(await page.locator('#recordStateHeader').isVisible(),false);
@@ -254,14 +273,29 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('.map-pin').waitFor();
     assert.ok(await page.evaluate(()=>document.getElementById('mapPanel')
       .compareDocumentPosition(document.getElementById('recordsPanel')) & Node.DOCUMENT_POSITION_FOLLOWING));
+    mediaSession=false;
     await page.goto('http://127.0.0.1:8765'+target);
+    await page.locator('#reportLogin').waitFor({state:'visible'});
     assert.equal(await page.locator('#evidenceAccess').isVisible(),false);
     await page.locator('#reportKey').fill('x'.repeat(32));
     await page.getByRole('button',{name:'Entrar',exact:true}).click();
-    await page.getByText('chat-sintético.txt',{exact:true}).waitFor();
+    await page.getByText('Última línea del chat',{exact:false}).waitFor();
+    await page.locator('#files-image img').waitFor();
+    assert.equal(await page.locator('#evidenceAccess audio').count(),1);
+    assert.equal(await page.locator('#evidenceAccess video').count(),1);
+    await page.locator('#files-audio').getByRole('button',{name:'1,5×',exact:true}).click();
+    await page.locator('#files-video').getByRole('button',{name:'2×',exact:true}).click();
+    assert.equal(await page.locator('#files-audio audio').evaluate(el=>el.playbackRate),1.5);
+    assert.equal(await page.locator('#files-video video').evaluate(el=>el.playbackRate),2);
     const original=page.waitForEvent('download');
-    await page.getByRole('button',{name:'Descargar',exact:true}).click();
+    await page.locator('#files-chat').getByRole('link',{name:'Descargar original',exact:true}).click();
     assert.equal((await original).suggestedFilename(),'chat-sintético.txt');
+    await page.goto('http://127.0.0.1:8765'+target.replace('tipo=chat','tipo=video'));
+    await page.locator('#files-video').waitFor({state:'visible'});
+    assert.equal(await page.locator('#reportLogin').isVisible(),false);
+    await page.locator('#evidenceLogout').click();
+    await page.locator('#reportLogin').waitFor({state:'visible'});
+    assert.equal(await page.locator('#evidenceFiles').textContent(),'');
     assert.deepEqual(errors,[]);
     console.log('Panel: acceso, carga interrumpida/reanudada, agrupación explícita en reporte, móvil y salida OK (API simulada).');
   }finally{await browser.close();}

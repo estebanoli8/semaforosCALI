@@ -29,3 +29,21 @@
 .report-catalog ul, #evidenceFiles { list-style: none; padding-left: 0; margin: 10px 0; }
 .report-catalog li { margin: 5px 0; }
 #evidenceFiles li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; overflow-wrap: anywhere; }
+
+.report-points { margin: 0; padding-left: 16px; }
+.report-points li + li { margin-top: 6px; }
+.evidence-types { margin: 12px 0 16px; justify-content: flex-start; }
+.evidence-types a { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--green); }
+.evidence-set { margin: 22px 0; scroll-margin-top: 12px; }
+.evidence-set h3 { margin: 0 0 10px; }
+.evidence-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); gap: 12px; }
+.evidence-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; overflow-wrap: anywhere; }
+.evidence-card h4 { margin: 0 0 8px; font-size: 14px; }
+.evidence-card a { display: inline-block; margin-top: 10px; color: var(--green); }
+.evidence-card img { display: block; width: auto; height: auto; max-width: 100%; max-height: 250px; border-radius: 7px; }
+.evidence-card audio, .evidence-card video { display: block; width: 100%; }
+.evidence-card video { max-height: 320px; background: #172b27; }
+.evidence-card pre { max-height: 480px; }
+.evidence-speeds { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 7px; font-size: 12px; }
+.evidence-speeds button { padding: 3px 7px; min-width: 33px; }
+.evidence-speeds button[aria-pressed="true"] { color: white; background: var(--green); }
