@@ -2,11 +2,19 @@
 
 ## Alcance y señales
 
-La vista privada `/reportes` reúne las conversaciones bajo la identidad que aparece en el chat. Vincula exportaciones si comparten un teléfono inequívoco. La fecha abarca el primer y último mensaje ciudadano con hora reconocida, incluidos adjuntos. En un chat grupal se muestran los remitentes identificados. Cuando no se puede atribuir un remitente se conserva el nombre del archivo. Los originales y las transcripciones completas se consultan en Evidencia.
+La vista privada `/reportes` usa como encabezado el nombre o número del ZIP. Las exportaciones con el mismo teléfono inequívoco comparten encabezado y conservan sus reportes independientes. El detalle usa las ubicaciones y los hallazgos ya extraídos; la fecha abarca el primer y último mensaje ciudadano con hora reconocida. Los originales y las transcripciones completas se consultan desde los enlaces de evidencia.
 
 La descripción se compone con afirmaciones de Qwen y referencias locales de fuentes ya procesadas. Se comprueba que cada frase se encuentre literalmente en la fuente. La interfaz distingue el tipo de falla, **desde cuándo lleva dañado** y la reincidencia tras reparación. Gestión registra guarda o agente, incluida la ausencia explícita. Peligro registra accidentes o riesgos y a quiénes afectan cuando se menciona. Las ubicaciones aproximadas se conservan como tales, y una ubicación sola marca el daño como inferido. Cuando termina el barrido, cada parte faltante se muestra como **No detectado**. Mientras hay fuentes en procesamiento, los campos faltantes aparecen pendientes y la inferencia de daño por ubicación sola espera al cierre. La fecha que acompaña la duración corresponde al mensaje que la declara, sin convertir el intervalo de la conversación en tiempo de falla.
 
-El PDF incluye todas las conversaciones del corte, los campos desplegados, fecha de generación, logo, título y subtítulo en cada página. Los archivos tienen enlaces firmados individuales válidos siete días. Quien reciba uno de esos enlaces puede abrir la evidencia concreta hasta que venza.
+## Navegar el detalle y exportar el PDF
+
+1. Abre **Detalle de reporte**. La lista inicial contiene todos los nombres o números en paneles cerrados.
+2. Abre un nombre para ver las ubicaciones de sus reportes. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
+3. Abre una ubicación para ver Daño, Gestión, Peligro y Ubicación con sus evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación.
+
+**Descargar informe PDF** reúne el nombre, los cruces y sus enlaces individuales. Los cuatro campos se consultan en el tercer nivel de la web. Los archivos sin vínculo específico aparecen identificados como archivos de la conversación. El PDF conserva el logo, la fecha de generación y la vigencia de siete días de los enlaces firmados. Una ubicación pendiente aparece como **Ubicación sin identificar**.
+
+El cambio usa salidas existentes y entra en vigor después de desplegar la versión que lo contiene. No requiere cargar los ZIP de nuevo ni reprocesar los modelos.
 
 En cada foto o fotograma, YOLO se evalúa con conteos. En audios y audio de video, la evaluación de Whisper compara lo escuchado con la transcripción. En cada salida de Qwen se compara lo observado en el fragmento y lo detectado. Los cuatro campos tienen casillas Observado y Detectado. Guardar confirma la evaluación de los campos, incluidas ausencias explícitamente revisadas. El tablero usa la última evaluación guardada por ejecución, informa el conteo exacto para YOLO y promedia el F1 de campos con positivos observados o detectados para Whisper y Qwen. Estas medidas complementan WER y las métricas de detección por caja. La coincidencia de conteo mide cantidades. El F1 de campos mide detección de presencia; la revisión de la cita permite cotejar su contenido.
 

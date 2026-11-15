@@ -139,10 +139,11 @@ def create_media_router(store, root, key, team_auth):
         return signed_inventory(result,identity)
 
     @router.get('/conversations/{ident}')
-    def citizen_inventory(ident: UUID,identity: str=Depends(media_auth)):
+    def citizen_inventory(ident: UUID,episodio: str | None=Query(None,pattern=r'^[a-f0-9]{16}$'),
+                          identity: str=Depends(media_auth)):
         from .detailed import conversation_evidence
         try:
-            return signed_inventory(conversation_evidence(store,ident),identity)
+            return signed_inventory(conversation_evidence(store,ident,episodio),identity)
         except ReportError as exc:
             raise HTTPException(404,'Conversación no disponible') from exc
 

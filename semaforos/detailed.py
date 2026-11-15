@@ -1,12 +1,13 @@
 """Private conversation report assembled from the latest extraction of each source."""
 import re
+from hashlib import sha256
 from collections import Counter, defaultdict
 from zoneinfo import ZoneInfo
 
 from .conversation_summary import folded, gps_coordinates
 from .local_places import hints
 from .messages import is_team_sender
-from .report_evidence import evidence_type
+from .report_evidence import evidence_type, with_video_family
 from .reports import ReportError
 from .text_fields import FIELDS, TAGS
 from .whatsapp import BANNERS, useful_segments
@@ -51,9 +52,10 @@ def location_values(text):
     return []
 
 
-def compose(runs):
+def compose(runs, message_evidence=None):
     """Combine exact assertions. Keep multiple locations and uncertain associations distinct."""
     claims=[]; places={}; seen=set()
+    attachments=message_evidence or {}
     for run in runs:
         sources={s['id']:s for s in run['payload'].get('sources',[]) if 'id' in s and isinstance(s.get('text'),str)}
         output=run['output']
@@ -77,40 +79,54 @@ def compose(runs):
                 local=location_values(valid_anchor or src['text']) or location_values(run.get('source_anchor') or '')
             for place,status in local:
                 places.setdefault(place,status)
-            claims.append((row,[place for place,_ in local],(run['job_id'],src.get('episode',0))))
+            message_ids=[src.get('message_id')]
+            if valid_anchor:
+                message_ids.append(anchor.get('message_id'))
+            claims.append((row,[place for place,_ in local],(run['job_id'],src.get('episode',0)),message_ids))
         # A processed location-only message can be useful even if Qwen returned no U.
         for src in sources.values():
             local=location_values(src['text'])
             for place,status in local:
                 places.setdefault(place,status)
                 claims.append(({'code':'U','literal':src['text'],'origin':src.get('origin'),
-                                'date':src.get('sent_at') or run.get('source_date'),'evidence_id':run['evidence_id']},[place],(run['job_id'],src.get('episode',0))))
+                                'date':src.get('sent_at') or run.get('source_date'),'evidence_id':run['evidence_id']},[place],(run['job_id'],src.get('episode',0)),[src.get('message_id')]))
             if RESTORED.search(folded(src['text'])):
                 claims.append(({'code':'D','literal':src['text'],'origin':src.get('origin'),
                                 'date':src.get('sent_at') or run.get('source_date'),'evidence_id':run['evidence_id']},
-                               [place for place,_ in local],(run['job_id'],src.get('episode',0))))
+                               [place for place,_ in local],(run['job_id'],src.get('episode',0)),[src.get('message_id')]))
     if not claims:
         return [{'location':None,'location_status':None,'inferred_fault':False,
                  'fields':{name:[] for name in FIELDS}}]
     result={place:{'location':place,'location_status':status,'inferred_fault':False,
                    'fields':{name:[] for name in FIELDS}} for place,status in places.items()}
     by_job=defaultdict(set)
-    for row,locations,job_id in claims:
+    linked=defaultdict(set)
+    for row,locations,job_id,_ in claims:
         by_job[job_id].update(locations)
-    for row,locations,job_id in claims:
+    routed=[]
+    message_targets=defaultdict(set)
+    for row,locations,job_id,message_ids in claims:
         candidate=locations or list(by_job[job_id])
-
         targets=candidate if row['code']=='U' and candidate else [candidate[0] if len(candidate)==1 else None]
         for target in targets:
-            group=result.setdefault(target,{'location':None,'location_status':None,'inferred_fault':False,
-                                            'fields':{name:[] for name in FIELDS}})
-            tag=row['code']
-            key=(target,tag,folded(row['literal']).strip(),str(row['evidence_id']))
-            if key in seen:
-                continue
-            seen.add(key)
-            group['fields'][TAGS[tag][1]].append(row)
-    for group in result.values():
+            routed.append((target,row,message_ids))
+            for ident in message_ids:
+                message_targets[ident].add(target)
+    for target,row,message_ids in routed:
+        group=result.setdefault(target,{'location':None,'location_status':None,'inferred_fault':False,
+                                        'fields':{name:[] for name in FIELDS}})
+        linked[target].add(row['evidence_id'])
+        for ident in message_ids:
+            if len(message_targets[ident])==1:
+                linked[target].update(attachments.get(ident,()))
+        tag=row['code']
+        key=(target,tag,folded(row['literal']).strip(),str(row['evidence_id']))
+        if key in seen:
+            continue
+        seen.add(key)
+        group['fields'][TAGS[tag][1]].append(row)
+    for place,group in result.items():
+        group['evidence_ids']=linked[place]
         fields=group['fields']
         group['inferred_fault']=bool(group['location'] and fields['ubicacion'] and
                                     not any(fields[key] for key in ('dano','gestion','peligro')))
@@ -135,6 +151,12 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         if row['modality']=='audio' and row['senders'] and all(is_team_sender(s) for s in row['senders']):
             continue
         inventories[row['conversation_id']][row['id']]=row
+    attachments=defaultdict(set)
+    for row in db.execute("""
+        SELECT a.message_id,a.evidence_id FROM message_attachments a JOIN evidence e ON e.id=a.evidence_id
+        WHERE a.state='linked' AND e.conversation_id=ANY(%s::uuid[])
+    """,(ids,)):
+        attachments[str(row['message_id'])].add(row['evidence_id'])
     messages=defaultdict(list)
     for row in db.execute("""
         WITH parses AS (
@@ -203,17 +225,36 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         dates=[m['sent_at'] for m in messages[cid] if m['sent_at']]
         people=list(dict.fromkeys(m['sender_visible'].strip().strip('\u200e\u200f') for m in messages[cid]))
         reporter=' · '.join(people) if people else conversation['original_name']
-        phone=re.sub(r'[\s()+-]','',reporter)
-        key=phone if phone.isdecimal() and len(phone)>=8 else str(cid)
+        archive_label=re.sub(r'^(?:WhatsApp Chat\s*-\s*|Chat de WhatsApp con\s+)', '',
+                             conversation['original_name'],flags=re.I).strip() or reporter
+        key=str(cid)
+        for label in (reporter, re.sub(r'\s*\([0-9]+\)$','',archive_label)):
+            phone=re.sub(r'[\s()+-]','',label)
+            if phone.isdecimal() and len(phone)>=8:
+                key=phone
+                break
         evidence=[{'id':row['id'],'type':evidence_type(row),'name':row['original_name']}
                   for row in inventory.values()]
         status=processing.get(cid,{})
         state='pending' if status.get('pending') else 'partial' if status.get('failed') else 'completed'
-        item={'id':cid,'reporter':reporter,'analysis_state':state,'reporter_key':key,'date_from':min(dates,default=None),
-              'date_to':max(dates,default=None),'episodes':compose(runs[cid]),
-              'evidence_counts':dict(Counter(file['type'] for file in evidence))}
+        episodes=compose(runs[cid],attachments)
+        assigned=set()
+        for episode in episodes:
+            location=episode['location']
+            episode['id']=sha256((location or '').encode()).hexdigest()[:16]
+            selected=with_video_family(inventory,episode.pop('evidence_ids',()))
+            assigned.update(selected)
+            files=[file for file in evidence if file['id'] in selected]
+            episode['evidence_counts']=dict(Counter(file['type'] for file in files))
+            if include_evidence:
+                episode['evidence']=files
+        unassigned=[file for file in evidence if file['id'] not in assigned]
+        item={'id':cid,'reporter':reporter,'archive_label':archive_label,'analysis_state':state,'reporter_key':key,
+              'date_from':min(dates,default=None),'date_to':max(dates,default=None),'episodes':episodes,
+              'evidence_counts':dict(Counter(file['type'] for file in evidence)),
+              'unassigned_evidence_count':len(unassigned)}
         if include_evidence:
-            item['evidence']=evidence
+            item.update(evidence=evidence,unassigned_evidence=unassigned)
         result.append(item)
     return result,inventories
 
@@ -226,7 +267,7 @@ def snapshot(store):
     return {'cutoff':cutoff,'items':rows}
 
 
-def conversation_evidence(store, ident):
+def conversation_evidence(store, ident, episode_id=None):
     from .source_detail import enrich
     with store.connect() as db:
         db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -235,10 +276,17 @@ def conversation_evidence(store, ident):
             raise ReportError('conversation_not_found')
         row=rows[0]
         items=row.pop('evidence')
+        row.pop('unassigned_evidence')
+        if episode_id is not None:
+            episode=next((item for item in row['episodes'] if item['id']==episode_id),None)
+            if episode is None:
+                raise ReportError('report_episode_not_found')
+            items=episode['evidence']
+            row.update(episodes=[episode],intersection=episode['location'])
         inventory=inventories[ident]
         for item in items:
             if item['type']=='frame':
                 frame=inventory[item['id']]
                 item.update(video_id=frame['parent_id'],time=frame['metadata'].get('segundo'))
         enrich(db,ident,items,inventory)
-        return {**row,'scope':'conversacion','items':items}
+        return {**row,'scope':'registro' if episode_id else 'conversacion','items':items}

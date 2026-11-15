@@ -11,6 +11,15 @@ def evidence_type(row):
     return row['modality']
 
 
+def with_video_family(inventory, selected):
+    """Include parent video and its derived evidence for direct file links."""
+    ids=set(selected)&inventory.keys()
+    ids.update(inventory[ident]['parent_id'] for ident in tuple(ids)
+               if inventory[ident]['parent_id'] in inventory)
+    videos={ident for ident in ids if inventory[ident]['modality']=='video'}
+    ids.update(ident for ident,row in inventory.items() if row['parent_id'] in videos)
+    return ids
+
 def attach_evidence(c, items, evidence_code=None, *, detail=False, export=False):
     if evidence_code is not None:
         items = [item for item in items if item['code']==evidence_code]
@@ -50,10 +59,7 @@ def attach_evidence(c, items, evidence_code=None, *, detail=False, export=False)
             selected = {ident for ident in report_files if ident in inventory}
         else:
             selected = {ident for source in source_ids for ident in linked[source] | {source} if ident in inventory}
-            parents = {inventory[ident]['parent_id'] for ident in selected if inventory[ident]['parent_id'] in inventory}
-            selected.update(parents)
-            video_ids = {ident for ident in selected if inventory[ident]['modality']=='video'}
-            selected.update(ident for ident,row in inventory.items() if row['parent_id'] in video_ids)
+            selected = with_video_family(inventory, selected)
             # When the chat does not link any media to this row, label the inventory as conversational.
             if not any(inventory[ident]['modality']!='chat' for ident in selected):
                 scope='conversacion'

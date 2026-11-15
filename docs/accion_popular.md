@@ -2,7 +2,7 @@
 
 La operación actualizada del panel unificado y la migración de la cola se documentan en [Detalle y Qwen](detalle_qwen.md). Las instrucciones siguientes conservan el reproceso selectivo de audio y chat del perfil `accion-popular-v2`. Para la cola pendiente y el tablero actuales, seguir la guía enlazada.
 
-En la versión actual el panel reúne Detalle de reporte, Desempeño de modelos y Cargue de ZIP. La clave abre una sesión HTTPS de cuatro horas compartida en el mismo navegador. Los enlaces de evidencia abren otra pestaña. Los enlaces firmados del PDF del detalle vencen a los siete días.
+El panel reúne Detalle de reporte, Desempeño de modelos y Cargue de ZIP. La navegación por nombre y cruce y el PDF resumido se explican en [Detalle y Qwen](detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf). La clave abre una sesión HTTPS de cuatro horas compartida en el mismo navegador. Los enlaces de evidencia abren otra pestaña. Los enlaces firmados del PDF del detalle vencen a los siete días.
 
 ## Interpretación y revisión
 

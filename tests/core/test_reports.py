@@ -269,6 +269,45 @@ class ReportTests(unittest.TestCase):
         self.assertEqual({job['stage'] for job in jobs},{'audio','text'})
 
 
+    def test_detailed_crossings_filter_their_evidence_and_export_links(self):
+        path=self.root/'WhatsApp Chat - Ciudadana de prueba.zip'
+        with zipfile.ZipFile(path,'w') as archive:
+            archive.writestr('_chat.txt',
+                '[01/11/26, 10:00] Vecina: Quinta con 5, apagado <attached: foto-primera.jpg>\n'
+                '[02/11/26, 11:00] Vecina: Carrera 70, intermitente <attached: foto-segunda.jpg>\n')
+            for name in ('foto-primera.jpg','foto-segunda.jpg','sin-vinculo.jpg'):
+                archive.writestr(name,'imagen sintética '+name)
+        cid=import_zip(self.store,self.root,path,self.config,'test-episodes')['conversation_id']
+        with self.store.connect() as c:
+            jobs=c.execute("""SELECT j.id FROM jobs j JOIN evidence e ON j.evidence_id=e.id
+                WHERE e.conversation_id=%s AND j.stage='text'""",(cid,)).fetchall()
+            for entry in jobs:
+                job=self.store.claim(c,job_id=entry['id'])
+                self.store.complete(c,job,self.infer(self.store,c,job,self.root))
+        items=self.client.get('/detailed-records',headers=self.auth).json()['items']
+        row=next(item for item in items if item['id']==cid)
+        self.assertEqual(row['archive_label'],'Ciudadana de prueba')
+        self.assertEqual(row['unassigned_evidence_count'],1)
+        self.assertEqual(len(row['episodes']),2)
+        self.assertTrue(all(ep['evidence_counts']=={'image':1,'chat':1} for ep in row['episodes']))
+        with TestClient(self.client.app,base_url='https://testserver') as browser:
+            base='/report-media/conversations/'+cid
+            query={'episodio':row['episodes'][0]['id']}
+            self.assertEqual(browser.get(base,params=query).status_code,401)
+            browser.post('/report-media/session',headers=self.auth)
+            first=browser.get(base,params=query).json()
+            self.assertEqual(first['scope'],'registro')
+            self.assertEqual(first['intersection'],row['episodes'][0]['location'])
+            self.assertEqual({file['name'] for file in first['items']},{'_chat.txt','foto-primera.jpg'})
+            self.assertEqual({file['name'] for file in browser.get(base).json()['items']},
+                             {'_chat.txt','foto-primera.jpg','foto-segunda.jpg','sin-vinculo.jpg'})
+            self.assertEqual(browser.get(base,params={'episodio':'0'*16}).status_code,404)
+            export=browser.post('/report-exports',headers=self.auth,json={'detailed_report':True})
+            self.assertEqual(export.status_code,200)
+            for file in first['items']:
+                url=f'/informe/evidencia/{export.headers["X-Report-Export-ID"]}/{file["id"]}?firma='
+                self.assertIn(url.encode(),export.content)
+
     def test_detailed_report_date_pdf_reviews_and_queue_replacement(self):
         from semaforos.optimize_queue import prepare
         from semaforos.report_pdf import signature

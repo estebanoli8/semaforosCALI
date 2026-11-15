@@ -14,11 +14,14 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const uploadedNames=[];
     let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false,mediaSession=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
-    const citizen={id:'conversation-synthetic',reporter:'Ciudadana sintética',reporter_key:'citizen',
+    const citizen={id:'conversation-synthetic',reporter:'Vecina',archive_label:'Ciudadana sintética',reporter_key:'citizen',
       date_from:'2026-11-03T15:00:00Z',date_to:'2026-11-14T15:00:00Z',
-      episodes:[{location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
-        fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]}}],
-      evidence_counts:{chat:1}};
+      episodes:[{id:'episode-one',location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
+        fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]},
+        evidence_counts:{chat:1,video:1}},{id:'episode-two',location:'Carrera 84',inferred_fault:false,
+        fields:{dano:[{code:'D',literal:'Apagado por completo',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]},
+        evidence_counts:{chat:1}}],
+      evidence_counts:{chat:1,video:1}};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
     await page.context().route('**/*',async route=>{
@@ -48,9 +51,11 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       if(path.startsWith('/report-media/')) {
         if(!mediaSession) return route.fulfill({status:401});
         if(['/report-media/records/P-SYNTHETIC','/report-media/conversations/conversation-synthetic'].includes(path)){
+          const scoped=path.includes('/conversations/');
+          if(scoped)assert.equal(url.searchParams.get('episodio'),'episode-one');
           return route.fulfill({json:{scope:'registro',intersection:'Calle 5 con Carrera 70',
             situacion_presentada:'Se reporta una falla.',
-            ...(path.includes('/conversations/')?citizen:{}),
+            ...(scoped?{...citizen,episodes:[citizen.episodes[0]]}:{}),
             items:[['text','chat','chat-sintético.txt'],['image','image','foto-sintética.jpg'],
               ['audio','audio','voz-sintética.ogg'],['video','video','video-sintético.mp4']]
               .map(([id,type,name])=>({id,type,name,content:'/report-media/files/'+id+'/content',
@@ -280,13 +285,26 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/reportes');
+    const reporter=page.locator('.citizen-reports > summary');
+    await reporter.waitFor();
+    assert.match(await reporter.textContent(),/Ciudadana sintética/);
+    assert.equal(await page.locator('.citizen-report').count(),0);
+    await reporter.click();
+    const reports=page.locator('.citizen-report > summary');
+    await reports.nth(1).waitFor();
+    assert.equal(await page.getByText('Desde cuándo está dañado · Desde hace 12 días').count(),0);
+    await reports.filter({hasText:'Calle 5 con Carrera 70'}).click();
     await page.getByText('Desde cuándo está dañado · Desde hace 12 días',{exact:false}).waitFor();
-    await page.getByText('noviembre / 03 / 2026 – noviembre / 14 / 2026').waitFor();
-    assert.equal(await page.locator('#recordsPanel thead th:visible').count(),3);
+    await page.getByText('noviembre / 03 / 2026 – noviembre / 14 / 2026').first().waitFor();
+    assert.equal(await page.getByText('Apagado por completo',{exact:false}).count(),0);
+    assert.equal(await page.locator('#recordsTable').isVisible(),false);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     assert.equal(await page.getByRole('link',{name:'Reporte',exact:true}).count(),0);
     assert.equal(await page.locator('#mapPanel').isVisible(),false);
     assert.equal(await page.locator('#reportLogin').isVisible(),false);
-    await page.getByText('1 archivo',{exact:true}).click();
+    const scopedPdf=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Descargar informe PDF'}).click();
+    assert.equal((await scopedPdf).suggestedFilename(),'semaforos-cali-example-cut.pdf');
     const popup = page.waitForEvent('popup');
     await page.getByRole('link',{name:'1 chat TXT'}).click();
     const detail=await popup;
