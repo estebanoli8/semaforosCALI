@@ -26,6 +26,8 @@
     "context": 4096,
     "max_tokens": 1200,
     "threads": 4,
+    "chat_threads": 6,
+    "extraction": "compact-v1",
     "keep_alive": "30m"
   },
   "video": {"max_duration_seconds": 600},

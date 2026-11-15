@@ -59,3 +59,15 @@
 .evidence-review input[type=checkbox] { flex-shrink: 0 }
 .evidence-review small { flex-basis: 100% }
 .evidence-transcript { white-space: pre-wrap; overflow-wrap: anywhere }
+
+.citizen-heading th { background: #edf5ef; color: #183829; text-transform: none; font-size: 1rem; }
+.episode-fields { margin: .4rem 0 1rem; }
+.episode-fields dt { font-weight: 700; color: #224233; }
+.episode-fields dd { margin: 0 0 .55rem; }
+.episode-fields p { margin: .16rem 0; }
+.episode-fields small { color: #58665d; }
+.evidence-review fieldset { border: 1px solid #c5d2c9; border-radius: .4rem; margin: .35rem 0; }
+.evidence-review fieldset label { margin-right: .6rem; }
+.evidence-review button.saved { background: #217245; color: #fff; border-color: #217245; }
+#files-frame .evidence-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,20rem),1fr)); }
+.evidence-frame img { max-height: 300px; object-fit: contain; }

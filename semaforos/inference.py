@@ -88,5 +88,5 @@ if __name__=='__main__':
         atomic_json(sys.argv[2],execute(spec))
     except Exception as exc:
         # Nunca exponer mensajes arbitrarios: pueden incluir fuentes o credenciales.
-        atomic_json(sys.argv[2],{'error_code':safe_error_code(exc)})
+        atomic_json(sys.argv[2],{'error_code':safe_error_code(exc),'ollama_calls':getattr(exc,'ollama_calls',[])})
         raise SystemExit(1)

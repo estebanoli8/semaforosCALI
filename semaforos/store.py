@@ -114,12 +114,12 @@ class Store:
         c.execute("UPDATE jobs SET state='completed',lease_until=NULL,updated_at=now() WHERE id=%s",(job['id'],))
         c.commit()
 
-    def fail(self, c, job, code):
+    def fail(self, c, job, code, ollama_calls=None):
         c.rollback()
         row=c.execute('SELECT * FROM jobs WHERE id=%s FOR UPDATE',(job['id'],)).fetchone()
         if row['state']!='running' or row['lease_token']!=job['lease_token']:raise RuntimeError('lease_lost')
         state='pending' if row['attempts']<row['max_attempts'] else 'failed'
-        c.execute("UPDATE runs SET state='failed',finished_at=now(),error_code=%s WHERE id=%s",(code,job['run_id']))
+        c.execute("UPDATE runs SET state='failed',finished_at=now(),error_code=%s,output=%s WHERE id=%s",(code,Jsonb({'ollama_calls':ollama_calls}) if ollama_calls else None,job['run_id']))
         c.execute("UPDATE jobs SET state=%s,lease_until=NULL,available_at=now()+interval '30 seconds',updated_at=now() WHERE id=%s",(state,job['id']))
         c.commit()
 

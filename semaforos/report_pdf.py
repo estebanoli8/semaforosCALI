@@ -158,13 +158,81 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
     return buffer.getvalue()
 
 
-def make_export(store, root, key, include_links, origin=None, *, action_report=False):
+def render_detailed(data, generated, link_for, expires_at):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer
+    from .detailed import date_label
+    from datetime import datetime as date_time
+    from .text_fields import FIELDS, TAGS, WEB_SUBTITLE, WEB_TITLE
+
+    regular=ParagraphStyle('DetailRegular',fontName='ReportSans',fontSize=9,leading=13)
+    bold=ParagraphStyle('DetailHeading',parent=regular,fontName='ReportSansBold',fontSize=12,leading=15)
+    small=ParagraphStyle('DetailSmall',parent=regular,fontSize=8,leading=11)
+
+    def paragraph(text, style=regular):
+        return Paragraph(escape(text).replace('\n','<br/>'),style)
+
+    def page_header(page,doc):
+        page.drawImage(str(LOGO),476,735,84,32,preserveAspectRatio=True,anchor='c',mask='auto')
+        page.setFont('ReportSansBold',11)
+        page.drawString(46,756,WEB_TITLE)
+        page.setFont('ReportSans',7)
+        page.drawString(46,743,WEB_SUBTITLE)
+        page.drawString(46,730,'Generado '+formatted_date(generated))
+        page.line(46,725,568,725)
+        page.drawRightString(568,30,f'Página {doc.page}')
+
+    story=[paragraph(f'{len(data["items"])} conversaciones · Corte {formatted_date(data["cutoff"])}',small)]
+    if expires_at:
+        story.append(paragraph('Enlaces de evidencia disponibles hasta '+formatted_date(expires_at),small))
+    for row in data['items']:
+        dates=f'{date_label(row["date_from"])} – {date_label(row["date_to"])}'
+        story.append(KeepTogether([Spacer(0,12),paragraph(row['reporter'],bold),paragraph(dates,small)]))
+        for episode in row['episodes']:
+            if episode['location']:
+                story.append(paragraph(episode['location']+' · '+episode['location_status'].replace('_',' '),bold))
+            if episode['inferred_fault']:
+                story.append(paragraph('Semáforo dañado, inferido por el contexto del reporte.'))
+            for key,label in FIELDS.items():
+                fields=episode['fields'][key]
+                if key=='dano':
+                    for code in ('D','T','R'):
+                        matching=[field for field in fields if field['code']==code]
+                        if not matching:
+                            story.append(paragraph(TAGS[code][2]+' · No detectado'))
+                        for field in matching:
+                            date=(' · Mensaje del '+date_label(date_time.fromisoformat(field['date']))) if code=='T' and field.get('date') else ''
+                            story.append(paragraph(f'{TAGS[code][2]} · {field["literal"]}{date}'))
+                elif fields:
+                    for field in fields:
+                        story.append(paragraph(f'{label} · {field["literal"]}'))
+                else:
+                    story.append(paragraph(f'{label} · No detectado'))
+        for item in row['evidence']:
+            label=escape(item['type'].replace('_',' ')+' · '+item['name'])
+            if link_for:
+                label=f'<a href="{escape(link_for(item["id"]),quote=True)}" color="#204C8A">{label}</a>'
+            story.append(Paragraph(label,small))
+    buffer=BytesIO()
+    document=SimpleDocTemplate(buffer,pagesize=letter,leftMargin=46,rightMargin=44,topMargin=76,bottomMargin=44,
+                               title=WEB_TITLE,author='Esteban Oliveros Montoya')
+    document.build(story,onFirstPage=page_header,onLaterPages=page_header)
+    return buffer.getvalue()
+
+
+def make_export(store, root, key, include_links, origin=None, *, action_report=False, detailed_report=False):
+    include_links=include_links or detailed_report
     if include_links:
         base=urlsplit(origin or '')
         if base.scheme!='https' or not base.netloc or base.username or base.password or base.path not in ('','/') or base.query or base.fragment:
             raise ReportError('https_report_origin_required')
         origin=f'{base.scheme}://{base.netloc}'
-    data=snapshot(store,root,team=action_report,export=action_report)
+    if detailed_report:
+        from .detailed import snapshot as details
+        data=details(store)
+    else:
+        data=snapshot(store,root,team=action_report,export=action_report)
     ident=uuid4()
     generated=datetime.now(BOGOTA)
     expires_at=generated+timedelta(days=LINK_DAYS) if include_links else None
@@ -172,7 +240,13 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
     def evidence_url(evidence_id):
         return f'{origin}/informe/evidencia/{ident}/{evidence_id}?firma={signature(key,ident,evidence_id,expires_at)}'
 
-    pdf=render_pdf(data,ident,generated,evidence_url if include_links else None,expires_at)
+    link_for=evidence_url if include_links else None
+    pdf=render_detailed(data,generated,link_for,expires_at) if detailed_report else render_pdf(data,ident,generated,link_for,expires_at)
+    versions=([{'conversation_id':str(r['id']),'evidence_ids':[str(e['id']) for e in r['evidence']]}
+               for r in data['items']] if detailed_report else
+              [{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} if 'id' in r else
+               {'code':r['code'],'date':r['date'].isoformat() if r['date'] else None,
+                'intersection':r['intersection'],'description':r['description']} for r in data['items']])
     relative=f'informes/{ident}.pdf'
     destination=contained(root,relative)
     destination.parent.mkdir(parents=True,exist_ok=True)
@@ -188,11 +262,9 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
                 evidence_ids,evidence_expires_at,boundary_version)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(
                 ident,generated,data['cutoff'],SCHEMA_VERSION,relative,hashlib.sha256(pdf).hexdigest(),
-                Jsonb([{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} if 'id' in r else
-                       {'code':r['code'],'date':r['date'].isoformat() if r['date'] else None,
-                        'intersection':r['intersection'],'description':r['description']} for r in data['items']]),
+                Jsonb(versions),
                 sorted({e['id'] for row in data['items'] for e in row['evidence']}) if include_links else [],
-                expires_at,data['boundary_version']))
+                expires_at,data.get('boundary_version')))
     except Exception:
         destination.unlink(missing_ok=True)
         raise

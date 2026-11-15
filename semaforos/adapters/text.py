@@ -105,6 +105,9 @@ def request_batch(sources, config, on_partial):
 
 
 def extract(sources, config, on_partial=None):
+    if config.get('extraction')=='compact-v1':
+        from .compact_text import extract_compact
+        return extract_compact(sources,config,on_partial)
     if len(json.dumps(sources, ensure_ascii=False)) > 6000:
         raise ValueError('text_requires_chunking')
     try:

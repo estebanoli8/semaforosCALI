@@ -269,6 +269,58 @@ class ReportTests(unittest.TestCase):
         self.assertEqual({job['stage'] for job in jobs},{'audio','text'})
 
 
+    def test_detailed_report_date_pdf_reviews_and_queue_replacement(self):
+        from semaforos.optimize_queue import prepare
+        from semaforos.report_pdf import signature
+        from semaforos.messages import index_chat
+        from semaforos.whatsapp import PARSER_VERSION
+        with self.store.connect() as c:
+            chat=c.execute("SELECT id,storage_path FROM evidence WHERE conversation_id=%s AND modality='chat'",(self.cid,)).fetchone()
+        data=self.client.get('/detailed-records',headers=self.auth)
+        self.assertEqual(data.status_code,200)
+        row=data.json()['items'][0]
+        self.assertEqual(row['reporter'],'Vecina')
+        self.assertTrue(row['date_from'].startswith('2026-11-01T15:00:00'))
+        self.assertTrue(row['date_to'].startswith('2026-11-02T16:00:00'))
+        self.assertEqual(row['evidence_counts'],{'chat':1})
+        with TestClient(self.client.app,base_url='https://testserver') as browser:
+            browser.post('/report-media/session',headers=self.auth)
+            media=browser.get('/report-media/conversations/'+self.cid)
+            self.assertEqual(media.status_code,200)
+            chat_item=media.json()['items'][0]
+            self.assertEqual(chat_item['type'],'chat')
+            review={'run_id':chat_item['analysis']['evaluations'][0]['run_id'],'field':'semantic_fields',
+                    'label':{'dano':{'observed':True,'detected':True}},'reviewer':'Equipo'}
+            self.assertEqual(browser.post('/reviews',headers={'Origin':'https://testserver'},json=review).status_code,200)
+            quality=browser.get('/model-metrics').json()['human_evaluations']['text']
+            self.assertEqual(quality['fields']['dano']['samples'],1)
+            self.assertEqual(quality['fields']['gestion']['samples'],0)
+            self.assertEqual(quality['macro_f1'],1)
+            pdf=browser.post('/report-exports',headers=self.auth,json={'detailed_report':True})
+            self.assertEqual(pdf.status_code,200)
+            self.assertTrue(pdf.content.startswith(b'%PDF-'))
+            ident=pdf.headers['X-Report-Export-ID']
+            with self.store.connect() as c:
+                exp=c.execute('SELECT evidence_ids,evidence_expires_at FROM report_pdf_exports WHERE id=%s',(ident,)).fetchone()
+            self.assertEqual(exp['evidence_ids'],[chat['id']])
+            token=signature('x'*32,ident,chat['id'],exp['evidence_expires_at'])
+            direct=browser.get(f'/informe/evidencia/{ident}/{chat["id"]}?firma={token}')
+            self.assertIn('Quinta con 5',direct.text)
+        old={**self.config,'text':{'model':'test','threads':4}}
+        old_job=self.store.enqueue(chat['id'],'text','legacy-test',old,{'sources':[]})
+        self.assertEqual(prepare(self.store,self.config,conversation=self.cid)['pending_jobs'],1)
+        self.assertGreater(prepare(self.store,self.config,conversation=self.cid,apply=True)['chat_batches'],0)
+        self.assertEqual(prepare(self.store,self.config,conversation=self.cid)['pending_jobs'],0)
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT payload FROM jobs WHERE id=%s',(old_job,)).fetchone()['payload']
+                             ['superseded_by_review'],'detalle-qwen-v3')
+        proof=self.store.evidence(self.cid,'unrecognized.txt','chat','unrecognized.txt',5,'3'*64)
+        with self.store.connect() as c:
+            c.execute('INSERT INTO source_texts VALUES (%s,%s)',(proof,'15/11/2026 10.00 | Ciudadana | Falla'))
+        index_chat(self.store,proof,self.config)
+        alerts=self.client.get('/model-metrics',headers=self.auth).json()['chat_format_alerts']
+        self.assertTrue(any(a['parser_version']==PARSER_VERSION and a['format_health']['severity']=='degraded' for a in alerts))
+
     def test_indexes_do_not_make_one_report_per_message(self):
         self.assertEqual(len(self.findings),4)
         self.assertEqual(self.client.get('/reports',headers=self.auth).json()['total'],0)

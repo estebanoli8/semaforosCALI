@@ -90,7 +90,7 @@ class UploadTests(unittest.TestCase):
         self.assertEqual(self.client.post(f'/uploads/{ident}/finish',headers=self.auth).json()['state'],'queued')
         def infer(store,c,job,root):
             self.assertEqual(job['stage'],'text')
-            self.assertEqual(job['payload']['sources'][0]['text'],'[01/11/26, 10:00:00] Vecino: Quinta con quinta, apagado.\n')
+            self.assertEqual(job['payload']['sources'][0]['text'],'Quinta con quinta, apagado.')
             return {'result':{'assertions':[],'summary':'Predicción sintética'},'metrics':{'wall_seconds':1},'model_identity':{'test_double':True}}
         self.assertTrue(once(self.store,self.root,runner=infer))
         uploaded=self.uploads.get(ident)

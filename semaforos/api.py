@@ -55,6 +55,7 @@ class ReportLocation(BaseModel):
 class ReportExport(BaseModel):
     share_evidence: bool = False
     action_report: bool = False
+    detailed_report: bool = False
 
 
 class UploadStart(BaseModel):
@@ -302,13 +303,13 @@ def create_app(store=None, root=None, config=None, token=None):
         return {'total':total,'items':rows}
     @private.post('/reviews')
     def review(body:Review):
-        stages={'transcription':'audio','boxes':'detect','assertions':'text','frame_counts':'detect'}
+        stages={'transcription':'audio','boxes':'detect','assertions':'text','frame_counts':'detect','semantic_fields':None}
         if body.field not in (*stages,'location_detected'):
             raise HTTPException(400,'Campo de revisión inválido')
         with store.connect() as c:r=c.execute("SELECT r.*,j.stage,e.modality FROM runs r JOIN jobs j ON j.id=r.job_id JOIN evidence e ON e.id=j.evidence_id WHERE r.id=%s AND r.state='completed'",(body.run_id,)).fetchone()
         if not r:raise HTTPException(404,'Predicción completada no encontrada')
-        allowed=('text','audio') if body.field=='location_detected' else (stages[body.field],)
-        if r['stage'] not in allowed or (body.field=='frame_counts' and r['modality']!='frame'):
+        allowed=('text','audio') if body.field in ('location_detected','semantic_fields') else (stages[body.field],)
+        if r['stage'] not in allowed or (body.field=='frame_counts' and r['modality'] not in ('frame','image')):
             raise HTTPException(400,'Campo incompatible con la etapa')
         # Validar antes de registrar la etiqueta; las observaciones sin métrica se conservan.
         metrics=None
@@ -319,6 +320,14 @@ def create_app(store=None, root=None, config=None, token=None):
                 if not isinstance(body.label,dict) or set(body.label)!=set(('observed','detected')) or any(
                         type(n) is not int or not 0<=n<=1000 for n in body.label.values()):
                     raise ValueError()
+            elif body.field=='semantic_fields':
+                from .text_fields import FIELDS
+                if not isinstance(body.label,dict) or not body.label or not set(body.label)<=FIELDS.keys():
+                    raise ValueError()
+                for entry in body.label.values():
+                    if (not isinstance(entry,dict) or set(entry)!={'observed','detected'}
+                            or any(type(value) is not bool for value in entry.values())):
+                        raise ValueError()
             elif body.field=='location_detected':
                 if type(body.label) is not bool:
                     raise ValueError()
@@ -438,6 +447,11 @@ def create_app(store=None, root=None, config=None, token=None):
         from .report_map import snapshot
         return snapshot(store,root,team=True)
 
+    @private.get('/detailed-records')
+    def detailed_records():
+        from .detailed import snapshot
+        return snapshot(store)
+
     @private.get('/report-map')
     def private_report_map():
         from .report_map import snapshot
@@ -469,7 +483,7 @@ def create_app(store=None, root=None, config=None, token=None):
         from .report_pdf import make_export
         origin=os.getenv('SC_REPORT_ORIGIN') or str(request.base_url)
         try:
-            ident,path=make_export(store,root,token,body.share_evidence,origin,action_report=body.action_report)
+            ident,path=make_export(store,root,token,body.share_evidence,origin,action_report=body.action_report,detailed_report=body.detailed_report)
         except ReportError as exc:
             raise HTTPException(400,str(exc))
         return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf',

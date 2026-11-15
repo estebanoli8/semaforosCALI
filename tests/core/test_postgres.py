@@ -197,8 +197,9 @@ class PostgresTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT count(*) AS n FROM chat_parses').fetchone()['n'],2)
             self.assertTrue(all(r['sent_at'] is None for r in c.execute('SELECT sent_at FROM messages WHERE parse_id=%s',(second,))))
         sources=[s for group in chat_sources(self.store,evidence,self.config) for s in group]
-        self.assertEqual({s['message_id'] for s in sources},{str(r['id']) for r in records})
-        self.assertEqual(''.join(s['text'] for s in sources),text)
+        self.assertTrue({s['message_id'] for s in sources}<={str(r['id']) for r in records})
+        self.assertTrue(all(text[s['char_start']:s['char_start']+len(s['text'])]==s['text'] for s in sources))
+        self.assertTrue(all('<attached:' not in s['text'] for s in sources))
 
     def test_message_api_requires_auth_and_preserves_source_dates(self):
         from fastapi.testclient import TestClient

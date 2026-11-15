@@ -3,7 +3,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 from .files import canonical_hash
-from .whatsapp import PARSER_VERSION, options, parse_chat, message_chunks
+from .whatsapp import PARSER_VERSION, options, parse_chat, message_chunks, compact_sources, format_health
 
 
 def is_team_sender(value):
@@ -30,14 +30,20 @@ def index_chat(store, evidence_id, config):
         key = canonical_hash([str(evidence_id), source['literal_text'], PARSER_VERSION, settings])
         # Serialize indexing, including API calls, without blocking model inference.
         c.execute('SELECT pg_advisory_xact_lock(%s)', (int(key[:15], 16),))
-        old = c.execute('SELECT id FROM chat_parses WHERE parse_key=%s', (key,)).fetchone()
-        if old: return old['id']
+        old = c.execute('SELECT id,format_health FROM chat_parses WHERE parse_key=%s', (key,)).fetchone()
+        if old and old['format_health'] is not None:
+            return old['id']
+        records=parse_chat(source['literal_text'],settings)
+        health=Jsonb(format_health(source['literal_text'],records))
+        if old:
+            c.execute('UPDATE chat_parses SET format_health=%s WHERE id=%s',(health,old['id']))
+            return old['id']
         ident = uuid4()
-        c.execute('INSERT INTO chat_parses(id,evidence_id,parser_version,options,parse_key) VALUES(%s,%s,%s,%s,%s)',
-                  (ident, evidence_id, PARSER_VERSION, Jsonb(settings), key))
+        c.execute('INSERT INTO chat_parses(id,evidence_id,parser_version,options,parse_key,format_health) VALUES(%s,%s,%s,%s,%s,%s)',
+                  (ident, evidence_id, PARSER_VERSION, Jsonb(settings), key,health))
         evidence = c.execute('SELECT id,original_name FROM evidence WHERE conversation_id=%s AND parent_id IS NULL AND modality<>%s', (source['conversation_id'], 'chat')).fetchall()
         columns = ['ordinal','char_start','char_end','raw_text','body_text','sender_visible','timestamp_literal','sent_at','timestamp_status','kind','timezone_name','timezone_assumed','date_order_used','date_order_assumed','century_assumed']
-        for message in parse_chat(source['literal_text'], settings):
+        for message in records:
             mid = uuid4()
             c.execute('INSERT INTO messages(id,parse_id,evidence_id,'+','.join(columns)+') VALUES('+','.join(['%s']*(3+len(columns)))+')',
                       [mid,ident,evidence_id]+[message[x] for x in columns])
@@ -58,4 +64,5 @@ def chat_sources(store, evidence_id, config):
         # Server-side cursor avoids copying every message into a second Python list.
         with c.cursor(name='chat_sources') as cursor:
             cursor.execute('SELECT * FROM messages WHERE parse_id=%s ORDER BY ordinal', (ident,))
-            yield from message_chunks(row for row in cursor if not is_team_sender(row['sender_visible']))
+            chunker=compact_sources if config['text'].get('extraction')=='compact-v1' else message_chunks
+            yield from chunker(row for row in cursor if not is_team_sender(row['sender_visible']))

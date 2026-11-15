@@ -41,7 +41,9 @@ WITH quality_by_run AS (
                    FILTER (WHERE (timing->>'eval_duration')::bigint>0
                            AND timing->>'eval_count' IS NOT NULL) AS generation_ns
         FROM (
-            SELECT r.output->'ollama_timings' AS timing
+            SELECT element AS timing FROM jsonb_array_elements(coalesce(r.output->'ollama_calls','[]'::jsonb)) element
+            UNION ALL
+            SELECT r.output->'ollama_timings' AS timing WHERE NOT (r.output ? 'ollama_calls')
             UNION ALL
             SELECT part->'ollama_timings'
             FROM jsonb_array_elements(coalesce(r.output->'recovery'->'batches','[]'::jsonb)) part
@@ -111,10 +113,12 @@ def dashboard(store, experiment, days):
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     chart_start = today.date() - timedelta(days=chart_days - 1)
     since = today - timedelta(days=days - 1) if days else None
+    from .quality_metrics import collect
     with store.connect() as connection:
         result = connection.execute(DASHBOARD_QUERY, {
             'experiment': experiment, 'since': since, 'chart_start': chart_start,
         }).fetchone()
+        result.update(collect(connection,experiment,since))
     result['chart_days'] = [(chart_start + timedelta(days=index)).isoformat()
                             for index in range(chart_days)]
     result['as_of'] = now.isoformat()

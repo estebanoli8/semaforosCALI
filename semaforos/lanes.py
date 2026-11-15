@@ -41,7 +41,7 @@ def once(store,root,lane,runner=None):
                 if not job:return False
                 print(json.dumps({'lane':lane,'stage':job['stage'],'event':'started','job_id':str(job['id'])}),flush=True)
                 try:store.complete(c,job,(runner or execute_child)(store,c,job,root))
-                except Exception as exc:store.fail(c,job,getattr(exc,'error_code',type(exc).__name__))
+                except Exception as exc:store.fail(c,job,getattr(exc,'error_code',type(exc).__name__),getattr(exc,'ollama_calls',None))
                 return True
             finally:
                 c.execute('SELECT pg_advisory_unlock_shared(%s)',(LOCK_KEY,));c.commit()
