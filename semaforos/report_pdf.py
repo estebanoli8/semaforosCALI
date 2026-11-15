@@ -12,6 +12,9 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
+import reportlab
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from .files import contained
 from .report_map import snapshot
@@ -21,6 +24,9 @@ BOGOTA = ZoneInfo('America/Bogota')
 SCHEMA_VERSION = 1
 LINK_DAYS = 7
 LOGO = Path(__file__).with_name('assets') / 'logo-esteban.png'
+FONT_DIR = Path(reportlab.__file__).with_name('fonts')
+pdfmetrics.registerFont(TTFont('ReportSans',str(FONT_DIR/'Vera.ttf')))
+pdfmetrics.registerFont(TTFont('ReportSansBold',str(FONT_DIR/'VeraBd.ttf')))
 
 
 def formatted_date(value):
@@ -79,7 +85,7 @@ def draw_map(chart, attributed):
     drawing.add(String(14,height-18,'N',fontName='ReportSans',fontSize=9,fillColor=north))
     for x1,y1,x2,y2 in [(27,height-19,27,height-11),(24,height-14,27,height-11),(30,height-14,27,height-11)]:
         drawing.add(Line(x1,y1,x2,y2,strokeColor=north,strokeWidth=.8))
-    drawing.add(String(14,14,'Fuente: IDESC · Perímetro urbano' if attributed else 'Cuadrícula de referencia · sin perímetro oficial cargado',
+    drawing.add(String(14,14,'Perímetro urbano: Planeación / IDESC · CC BY-SA 4.0' if attributed else 'Cuadrícula de referencia · sin perímetro oficial cargado',
                        fontName='ReportSans',fontSize=8,fillColor=HexColor('#47645a')))
     drawing.scale(.7,.7)
     drawing.width*=.7
@@ -88,18 +94,12 @@ def draw_map(chart, attributed):
 
 
 def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
-    import reportlab
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    fonts=Path(reportlab.__file__).with_name('fonts')
-    pdfmetrics.registerFont(TTFont('ReportSans',str(fonts/'Vera.ttf')))
-    pdfmetrics.registerFont(TTFont('ReportSansBold',str(fonts/'VeraBd.ttf')))
     styles={
         'title':ParagraphStyle('ReportTitle',fontName='ReportSansBold',fontSize=25,leading=28,textColor=colors.HexColor('#14382d')),
         'subtitle':ParagraphStyle('ReportSubtitle',fontName='ReportSansBold',fontSize=13,leading=17,textColor=colors.HexColor('#14382d')),
@@ -178,7 +178,10 @@ def make_export(store, root, key, include_links, origin=None):
             f.write(pdf)
         os.replace(tmp,destination)
         with store.connect() as c:
-            c.execute('INSERT INTO report_pdf_exports VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',(
+            c.execute('''INSERT INTO report_pdf_exports(
+                id,generated_at,cutoff,schema_version,storage_path,sha256,report_versions,
+                evidence_ids,evidence_expires_at,boundary_version)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(
                 ident,generated,data['cutoff'],SCHEMA_VERSION,relative,hashlib.sha256(pdf).hexdigest(),
                 Jsonb([{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} for r in data['items']]),
                 sorted({e['id'] for row in data['items'] for e in row['evidence']}) if include_links else [],

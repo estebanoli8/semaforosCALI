@@ -42,14 +42,14 @@ async function get(path, options = {}) {
 function drawMap(data) {
   const map=data.map;
   const chart=svg('svg',{viewBox:`0 0 ${map.width} ${map.height}`,'aria-label':'Mapa geográfico de los reportes ubicados',role:'group'});
+  for (const polygon of map.polygons) {
+    const d=polygon.map(ring=>'M '+ring.map(point=>point.join(' ')).join(' L ')+' Z').join(' ');
+    chart.append(svg('path',{d,class:'map-city'}));
+  }
   for (const line of map.grid) {
     const [x1,y1]=line.from,[x2,y2]=line.to;
     chart.append(svg('line',{x1,y1,x2,y2,class:'map-grid'}),
       svg('text',{x:line.vertical?x1:x1-33,y:line.vertical?y1+15:y1-2,class:'map-grid-label'},line.label));
-  }
-  for (const polygon of map.polygons) {
-    const d=polygon.map(ring=>'M '+ring.map(point=>point.join(' ')).join(' L ')+' Z').join(' ');
-    chart.append(svg('path',{d,class:'map-city'}));
   }
   chart.append(svg('text',{x:16,y:21,class:'map-grid-label'},'N ↑'));
   const groups=new Map();
@@ -78,7 +78,7 @@ function drawMap(data) {
   }
   byId('reportMap').replaceChildren(chart);
   byId('mapLegend').textContent=(data.boundary_version
-    ? 'Fuente cartográfica: IDESC, perímetro urbano de Cali.'
+    ? 'Perímetro urbano de Cali · Planeación / IDESC · CC BY-SA 4.0.'
     : 'Cuadrícula de referencia. Falta cargar el perímetro urbano oficial.')
     + (map.markers.length ? ' Cada punto rojo ubica uno o más reportes.' : ' Aún no hay puntos para mostrar.');
 }

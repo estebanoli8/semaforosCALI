@@ -31,7 +31,10 @@ class PostgresTests(unittest.TestCase):
 
     def test_migrations_are_repeatable(self):
         self.store.migrate()
-        with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM schema_migrations').fetchone()['n'],6)
+        expected = sorted(p.name for p in Path('semaforos/migrations').glob('*.sql'))
+        with self.store.connect() as c:
+            applied = c.execute('SELECT name FROM schema_migrations ORDER BY name').fetchall()
+        self.assertEqual([row['name'] for row in applied], expected)
 
     def test_controlled_trial_does_not_consume_old_queue(self):
         from semaforos.trial import run_trial
