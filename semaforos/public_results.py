@@ -133,7 +133,8 @@ def make_item(conversation_id, source_group, day, location, values, processing, 
             'description': ' · '.join(descriptions), 'revision':'pendiente',
             'processing':'procesando' if processing['running'] else 'en_cola' if processing['pending'] else
                           'parcial_con_errores' if processing['errors'] else 'completado',
-            'latitude':lat,'longitude':lon,'preliminary':True,'_public':True}
+            'latitude':lat,'longitude':lon,'preliminary':True,'_public':True,
+            '_conversation_id':conversation_id,'_source_ids':[source['id'] for source,_ in values]}
 
 
 def automatic_items(c, blocked_sources, *, points_allowed):

@@ -3,6 +3,19 @@
 const byId = id => document.getElementById(id);
 const team = location.pathname === '/reportes';
 const pageSize = 20;
+const params = new URLSearchParams(location.search);
+const selectedRecord = team ? params.get('registro') : null;
+const selectedType = params.get('tipo');
+const evidenceTypes = {
+  audio:['audio de WhatsApp','audios de WhatsApp'],
+  audio_video:['audio extraído de video','audios extraídos de video'],
+  image:['foto','fotos'],
+  video:['video original','videos originales'],
+  chat:['chat TXT','chats TXT'],
+  frame:['fotograma','fotogramas'],
+  other:['otro archivo','otros archivos']
+};
+
 const dateTime = new Intl.DateTimeFormat('es-CO', {dateStyle:'medium',timeStyle:'short',timeZone:'America/Bogota'});
 const states = {pendiente:'Revisión pendiente',revisado:'Revisado',completado:'Procesamiento completo',
   en_cola:'En cola',procesando:'Procesando',parcial_con_errores:'Procesamiento parcial'};
@@ -60,14 +73,15 @@ function drawMap(data) {
   }
   for(const group of groups.values()) {
     const {x,y} = group[0];
-    const label=group.map(marker=>marker.code).join(', ');
+    const codes=new Set(group.map(marker=>marker.code));
+    const found=data.items.filter(row=>codes.has(row.code));
+    const crossings=[...new Set(found.map(row=>row.intersection).filter(Boolean))].join(', ');
+    const label=team?[...codes].join(', '):(crossings||'Cruce ubicado')+' · '+group.length+' registros';
     const pin=svg('circle',{cx:x,cy:y,r:group.length>1?8:5,class:'map-pin',tabindex:0,role:'button','aria-label':label});
     pin.append(svg('title',{},label));
     const choose=()=>{
-      const codes=new Set(group.map(marker=>marker.code));
-      const rows=data.items.filter(row=>codes.has(row.code));
-      byId('mapSelection').textContent=rows.map(row=>row.code+' · '+row.intersection).join(' | ');
-      if(team && rows.length===1) edit(rows[0]);
+      byId('mapSelection').textContent=team?found.map(row=>row.code+' · '+row.intersection).join(' | '):label;
+      if(team && found.length===1) edit(found[0]);
     };
     pin.onclick=choose;
     pin.onkeydown=event=>{
@@ -83,26 +97,50 @@ function drawMap(data) {
     + (map.markers.length ? ' Cada punto rojo ubica uno o más reportes.' : ' Aún no hay puntos para mostrar.');
 }
 
+function catalog(row) {
+  const cell=node('td');
+  cell.className='report-catalog';
+  const counts=row.evidence_counts||{};
+  const groups=Object.entries(evidenceTypes).filter(([key])=>counts[key]>0);
+  if(!groups.length) { cell.textContent='Sin archivos vinculados'; return cell; }
+  const details=node('details');
+  const total=groups.reduce((sum,[key])=>sum+counts[key],0);
+  details.append(node('summary',total+(total===1?' archivo':' archivos')));
+  details.append(node('small',row.evidence_scope==='conversacion'?'De la conversación':'Vinculados al registro'));
+  const list=node('ul');
+  for(const [key,labels] of groups) {
+    const entry=node('li');
+    const count=counts[key];
+    const link=node('a',count+' '+labels[count===1?0:1]);
+    link.href='/reportes?'+new URLSearchParams({registro:row.code,tipo:key});
+    link.target='_blank';link.rel='noopener noreferrer';link.title='Abrir con la clave del equipo';
+    entry.append(link);list.append(entry);
+  }
+  details.append(list);cell.append(details);
+  return cell;
+}
+
 function renderRows() {
   if(!view) return;
   const rows=byId('reportRows');
   rows.replaceChildren();
   const query=byId('reportSearch').value.trim().toLocaleLowerCase('es-CO');
-  const matching=view.items.filter(row=>(row.code+' '+(row.intersection||'')).toLocaleLowerCase('es-CO').includes(query));
+  const matching=view.items.filter(row=>((team?row.code+' ':'')+(row.intersection||'')).toLocaleLowerCase('es-CO').includes(query));
   const end = Math.min(matching.length,(page+1)*pageSize);
   for(const row of matching.slice(page*pageSize,end)) {
     const tr=node('tr');
-    const code=node('td');
     if(team) {
+      const code=node('td');
       const button=node('button',row.code);
-      button.type='button';button.className='secondary';button.onclick=()=>edit(row);code.append(button);
-    } else code.textContent=row.code;
-    tr.append(code);
-    for(const label of [formatDate(row.date),row.intersection||'Por revisar',row.description||'Por consolidar',
-      [row.preliminary?'Preliminar · sin revisión humana':states[row.revision],states[row.processing]]
-        .filter(Boolean).join(' · '),row.reports_at_intersection??'—']) {
-      tr.append(node('td',label));
+      button.type='button';button.className='secondary';button.onclick=()=>edit(row);
+      code.append(button);tr.append(code);
     }
+    const description=node('td',row.description||'Por consolidar');
+    description.className='report-description';
+    tr.append(node('td',formatDate(row.date)),node('td',row.intersection||'Por revisar'),description);
+    if(team) tr.append(node('td',[states[row.revision],states[row.processing]].filter(Boolean).join(' · ')));
+    tr.append(node('td',row.reports_at_intersection??'—'));
+    if(!team) tr.append(catalog(row));
     rows.append(tr);
   }
   byId('reportEmpty').textContent=matching.length?'':'Aún no hay reportes para mostrar con esta selección.';
@@ -124,12 +162,36 @@ function render() {
   }
   byId('mapSelection').textContent='';
   drawMap(view);
+  if(team || view.map.markers.length) byId('recordsPanel').before(byId('mapPanel'));
+  else byId('recordsPanel').after(byId('mapPanel'));
   renderRows();
 }
+async function loadEvidence(signal) {
+  byId('reportStatus').textContent='Consultando evidencias…';
+  try {
+    const response=await get('/public-records/'+encodeURIComponent(selectedRecord)+'/evidence',{signal});
+    const data=await response.json();
+    if(signal.aborted)return;
+    const label=evidenceTypes[selectedType]?.[1];
+    const items=label?data.items.filter(item=>item.type===selectedType):data.items;
+    byId('evidenceTitle').textContent=label?'Evidencias · '+label:'Evidencias';
+    byId('evidenceScope').textContent=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
+    const list=byId('evidenceFiles');
+    list.replaceChildren(...items.map(fileItem));
+    if(!items.length)list.append(node('li','No hay archivos de este tipo en el corte actual.'));
+    byId('reportLogin').hidden=true;
+    byId('evidenceAccess').hidden=false;
+    byId('reportStatus').textContent='';
+  } catch(error) {
+    if(error.name!=='AbortError')byId('reportStatus').textContent=error.message;
+  }
+}
+
 async function load() {
   request?.abort();
   const current=new AbortController();
   request=current;
+  if(selectedRecord)return loadEvidence(current.signal);
   byId('reportStatus').textContent='Consultando reportes…';
   try {
     const response=await get(team?'/report-map':'/semaforos/datos',{signal:current.signal});
@@ -150,6 +212,19 @@ function download(blob, name) {
   const anchor=node('a');
   anchor.href=url;anchor.download=name;anchor.click();
   setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+function fileItem(file) {
+  const item=node('li');
+  const button=node('button','Descargar');
+  button.className='secondary';
+  button.onclick=async()=>{
+    try {
+      const response=await get('/evidence/'+file.id+'/download');
+      download(await response.blob(),file.name.split(/[\\/]/).pop());
+    } catch(error) { byId('reportStatus').textContent=error.message; }
+  };
+  item.append(node('span',file.name),button);
+  return item;
 }
 function edit(row) {
   selected=row;
@@ -173,24 +248,12 @@ function edit(row) {
     button.onclick=()=>{byId('latitude').value=pair.latitude;byId('longitude').value=pair.longitude;};
     byId('coordinateCandidates').append(button);
   }
-  byId('reportEvidence').replaceChildren();
-  for(const evidence of row.evidence) {
-    const item=node('li');
-    const button=node('button','Descargar '+evidence.modality);
-    button.className='secondary';
-    button.onclick=async()=>{
-      try {
-        const response=await get('/evidence/'+evidence.id+'/download');
-        download(await response.blob(),evidence.name.split(/[\\/]/).pop());
-      } catch(error) {byId('editStatus').textContent=error.message;}
-    };
-    item.append(button,node('span',evidence.name));
-    byId('reportEvidence').append(item);
-  }
+  byId('reportEvidence').replaceChildren(...row.evidence.map(fileItem));
   byId('editPanel').scrollIntoView({block:'start'});
 }
 function logout() {
   request?.abort();request=null;accessKey='';view=null;selected=null;
+  byId('evidenceAccess').hidden=true;byId('evidenceFiles').replaceChildren();
   byId('reportWork').hidden=true;byId('editPanel').hidden=true;byId('reportLogin').hidden=false;
   for(const id of ['reportStats','reportRows','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
   byId('locationForm').reset();
@@ -201,8 +264,18 @@ function logout() {
 byId('audience').textContent=team?'Acceso privado':'Consulta pública';
 byId('reportLogin').hidden=!team;
 byId('preliminaryNote').hidden=team;
+byId('recordCodeHeader').hidden=!team;
+byId('recordStateHeader').hidden=!team;
+byId('recordEvidenceHeader').hidden=team;
+byId('crossingCountNote').hidden=team;
+if(!team) {
+  byId('reportIntro').textContent='Consulta los cruces y las evidencias disponibles en los reportes ciudadanos.';
+  byId('reportSearch').labels[0].textContent='Buscar por cruce';
+  byId('reportSearch').placeholder='Calle o carrera';
+}
 byId('teamLinks').hidden=!team;
-byId('reportRefresh').onclick=load;
+byId('updateRecords').onclick=load;
+byId('evidenceLogout').onclick=logout;
 byId('reportSearch').oninput=()=>{page=0;renderRows();};
 byId('prevReport').onclick=()=>{page--;renderRows();};
 byId('nextReport').onclick=()=>{page++;renderRows();};

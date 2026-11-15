@@ -11,7 +11,7 @@
 .map-pin:focus { outline: none; stroke: #153a2f; stroke-width: 3; }
 .map-count { fill: #fff; dominant-baseline: middle; text-anchor: middle; pointer-events: none; font-size: 8px; font-weight: 700; }
 .report-intro a, #reportEvidence button { margin-right: 8px; }
-#reportRows td:nth-child(4) { min-width: 170px; max-width: 360px; overflow-wrap: anywhere; white-space: pre-line; }
+#reportRows td.report-description { font-weight: 400; min-width: 170px; max-width: 360px; overflow-wrap: anywhere; white-space: pre-line; }
 #reportRows td { vertical-align: top; }
 #reportMap, .coordinates, #coordinateCandidates { margin-block: 12px; }
 .coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
@@ -21,3 +21,11 @@
 #reportEvidence { padding-left: 20px; }
 #reportEvidence li { margin: 8px 0; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .coordinates { grid-template-columns: 1fr; } }
+
+.report-brand { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; }
+.report-brand img { height: auto; max-width: 100%; object-fit: contain; }
+.report-catalog { min-width: 165px; }
+.report-catalog details { padding: 0; border: 0; }
+.report-catalog ul, #evidenceFiles { list-style: none; padding-left: 0; margin: 10px 0; }
+.report-catalog li { margin: 5px 0; }
+#evidenceFiles li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; overflow-wrap: anywhere; }

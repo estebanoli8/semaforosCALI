@@ -10,6 +10,7 @@ from pathlib import Path
 from .conversation_summary import gps_coordinates
 from .reports import ReportError, detail
 from .public_results import CROSSING, automatic_items
+from .report_evidence import attach_evidence
 
 CALI_EXTENT = (-76.62, 3.29, -76.44, 3.55)
 WIDTH, HEIGHT, PAD = 720, 430, 40
@@ -166,7 +167,7 @@ WHERE r.revision<>'descartado'
 '''
 
 
-def snapshot(store, root, *, public=False):
+def snapshot(store, root, *, public=False, evidence_code=None):
     polygons, boundary_version = boundary(root)
     items = []
     public_conversations = set()
@@ -197,7 +198,8 @@ def snapshot(store, root, *, public=False):
                   'description':description,'revision':report['revision_effective'],
                   'processing':report['processing_state'],'latitude':lat,'longitude':lon}
             if public:
-                data['_public']=True
+                data.update(_public=True,_conversation_id=location['conversation_id'],
+                            _report_evidence_ids=[e['id'] for e in report['evidence']])
                 published_ids.append(location['id'])
                 public_conversations.add(location['conversation_id'])
             else:
@@ -218,8 +220,9 @@ def snapshot(store, root, *, public=False):
             projected, conversations = automatic_items(c,blocked,points_allowed=bool(polygons))
             items.extend(projected)
             public_conversations.update(conversations)
-    if public:
-        items.sort(key=lambda row: (row['date'] is not None,row['date'],row['code']), reverse=True)
+            evidence = attach_evidence(c,items,evidence_code)
+            if evidence_code is not None:
+                return evidence
 
     def intersection_key(row):
         title=row['intersection']
@@ -227,6 +230,9 @@ def snapshot(store, root, *, public=False):
             return crossing_key(title)
         return None
 
+    if public:
+        items.sort(key=lambda row: (intersection_key(row) is not None,
+                                    row['date'] is not None,row['date'],row['code']), reverse=True)
     keys=[intersection_key(row) for row in items]
     totals=Counter(key for key in keys if key is not None)
     for row,key in zip(items,keys):

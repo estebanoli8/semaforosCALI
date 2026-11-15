@@ -8,7 +8,7 @@ from semaforos.public_results import make_item, source_features
 
 class PublicResultsTests(unittest.TestCase):
     def test_no_contact_link_or_transcript_appears_in_result(self):
-        source={'text':'Soy Martina. Mi teléfono es 3001234567. Apagado hace dos días, '
+        source={'id':uuid4(),'text':'Soy Martina. Mi teléfono es 3001234567. Apagado hace dos días, '
                 'Carrera 70 con Calle 5. Me da miedo el cruce. https://example.test/call',
                 'origin':'chat','sent_at':datetime(2026,11,14,tzinfo=timezone.utc)}
         features=source_features(source,{'descripcion_dano','afectaciones'})

@@ -11,7 +11,9 @@
 <main>
   <div class="report-intro">
     <nav class="inline" id="teamLinks" hidden><a href="/">Procesamiento</a><a href="/metricas">Métricas de modelos</a><a href="/semaforos">Vista pública</a></nav>
-    <h1>Reportes y mapa de Cali</h1>
+    <div class="report-brand"><h1>Reportes y mapa de Cali</h1>
+      <img src="/marca-esteban.png" width="190" height="47" alt="Ingeniero Esteban Oli">
+    </div>
     <p id="reportIntro">Consulta los cruces y el estado de revisión de cada reporte ciudadano.</p>
     <p id="preliminaryNote" class="muted" hidden>Las filas preliminares provienen del procesamiento automático. Se agrupan por conversación, remitente, fecha y cruce cuando está identificado. Las menciones describen lo relatado por la ciudadanía.</p>
   </div>
@@ -23,31 +25,39 @@
     </form>
   </section>
   <p id="reportStatus" role="status" aria-live="polite"></p>
+  <section id="evidenceAccess" hidden>
+    <div class="sectionTitle"><h2 id="evidenceTitle">Evidencias</h2><button class="secondary" id="evidenceLogout">Salir</button></div>
+    <p id="evidenceScope" class="muted"></p>
+    <ul id="evidenceFiles"></ul>
+    <a href="/semaforos">Volver a la tabla pública</a>
+  </section>
   <div id="reportWork" hidden>
     <div class="stats report-stats" id="reportStats"></div>
-    <section class="map-panel">
-      <div class="sectionTitle"><h2>Mapa de cruces</h2><button class="secondary" id="reportRefresh">Actualizar</button></div>
-      <div id="reportMap"></div>
-      <p id="mapLegend" class="muted"></p>
-      <p id="mapSelection" class="muted" aria-live="polite"></p>
-    </section>
     <section id="pdfPanel" hidden>
       <div class="sectionTitle"><h2>Informe general</h2><button class="secondary" id="reportLogout">Salir</button></div>
       <p>Genera un PDF fechado con el mapa del corte, las versiones y los reportes vigentes, incluidos los pendientes.</p>
       <label class="check-label"><input type="checkbox" id="shareEvidence"> Incluir enlaces de evidencia válidos durante 7 días. Quien reciba el enlace podrá abrir el archivo vinculado.</label>
       <button id="exportPdf">Descargar informe PDF</button>
     </section>
-    <section>
-      <h2>Registros del corte</h2>
+    <section id="recordsPanel">
+      <div class="sectionTitle"><h2>Registros del corte</h2><button class="secondary" id="updateRecords">Actualizar</button></div>
+      <p id="crossingCountNote" class="muted" hidden><strong>Registros en este cruce</strong> cuenta las filas asociadas a la misma intersección, incluida la que estás consultando. Los relatos de distintos ciudadanos cuentan por separado. El guion indica que falta identificar el cruce.</p>
       <label for="reportSearch">Buscar por código o cruce</label><input type="search" id="reportSearch" placeholder="Calle, carrera o R-000001">
       <div class="tableScroll"><table>
-        <thead><tr><th>Reporte</th><th>Fecha del mensaje</th><th>Cruce</th><th>Descripción</th><th>Estado</th><th>En el cruce</th></tr></thead>
+        <thead><tr><th id="recordCodeHeader">Reporte</th><th>Fecha del mensaje</th><th>Cruce</th><th>Descripción</th>
+          <th id="recordStateHeader">Estado</th><th>Registros en este cruce</th><th id="recordEvidenceHeader">Evidencias</th></tr></thead>
         <tbody id="reportRows"></tbody>
       </table></div>
       <p id="reportEmpty" class="muted"></p>
       <div class="pagination">
         <button id="prevReport" class="secondary">Anterior</button><span id="reportPageInfo"></span><button id="nextReport" class="secondary">Siguiente</button>
       </div>
+    </section>
+    <section class="map-panel" id="mapPanel">
+      <h2>Mapa de cruces</h2>
+      <div id="reportMap"></div>
+      <p id="mapLegend" class="muted"></p>
+      <p id="mapSelection" class="muted" aria-live="polite"></p>
     </section>
     <section id="editPanel" hidden>
       <h2 id="editTitle">Revisar ubicación</h2>
