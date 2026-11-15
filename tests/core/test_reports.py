@@ -96,7 +96,8 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(all(row['reports_at_intersection']==2 for row in cut['items']))
         self.assertTrue(all(row['revision']=='pendiente' for row in cut['items']))
         self.assertTrue(all(set(row)=={'code','date','intersection','description','latitude','longitude',
-                                     'processing','revision','reports_at_intersection','map_state'}
+                                     'processing','revision','reports_at_intersection','map_state',
+                                     'evidence_counts','evidence_scope'}
                             for row in cut['items']))
         self.assertNotIn('Vecina',str(cut))
         self.assertEqual(self.client.get('/model-metrics',headers=self.auth).json()['stages'][0]['completed'],1)
@@ -129,18 +130,56 @@ class ReportTests(unittest.TestCase):
                 'El semáforo en Carrera 70 con Calle 5 está apagado. Soy Reportante Privado.'),1):
             path = self.root / f'WhatsApp privado {index}.zip'
             with zipfile.ZipFile(path,'w') as z:
-                z.writestr('_chat.txt',f'[03/11/26, 10:00] Remitente privado {index}: {text}')
+                z.writestr('_chat.txt',f'[30/10/26, 10:00] Remitente privado {index}: {text}')
             import_zip(self.store,self.root,path,self.config,'Publicación de prueba')
             once(self.store,self.root,runner=self.infer)
         data=self.client.get('/semaforos/datos').json()
         self.assertEqual(data['conversations_included'],3)
         crossing=[row for row in data['items'] if row['intersection']=='calle 5 con carrera 70']
+        self.assertEqual(data['items'][:2],crossing)
         self.assertEqual(len(crossing),2)
         self.assertEqual(len({row['code'] for row in crossing}),2)
         self.assertTrue(all(row['reports_at_intersection']==2 and row['latitude'] is None for row in crossing))
         self.assertEqual(self.client.get('/reports',headers=self.auth).json()['total'],0)
         for private in ('Reportante Privado','Remitente privado','3001234567','WhatsApp privado'):
             self.assertNotIn(private,str(data))
+
+    def test_public_evidence_counts_and_originals_require_team_key(self):
+        from semaforos.files import sha256
+        from uuid import UUID
+
+        def file(name,modality,parent=None):
+            path=self.root/name
+            path.write_bytes(b'synthetic attachment')
+            return self.store.evidence(UUID(self.cid),name,modality,name,path.stat().st_size,sha256(path),parent=parent)
+
+        audio=file('voz privada.ogg','audio')
+        video=file('video privado.mp4','video')
+        derived=file('audio derivado.wav','audio',video)
+        frame=file('fotograma.jpg','frame',video)
+        photo=file('foto privada.jpg','image')
+        unlinked=file('foto sin vínculo.jpg','image')
+        source=self.findings[0]['message_id']
+        with self.store.connect() as c:
+            for name,ident in [('voz.ogg',audio),('video.mp4',video),('foto.jpg',photo)]:
+                c.execute("INSERT INTO message_attachments VALUES(%s,%s,%s,'linked')",(source,name,ident))
+        data=self.client.get('/semaforos/datos').json()
+        item=next(row for row in data['items'] if row['evidence_scope']=='registro')
+        counts={'chat':1,'audio':1,'video':1,'audio_video':1,'image':1,'frame':1}
+        self.assertEqual(item['evidence_counts'],counts)
+        for private in (str(audio),'voz privada.ogg','_chat.txt','evidence_ids','_source_ids'):
+            self.assertNotIn(private,str(data))
+        path='/public-records/'+item['code']+'/evidence'
+        self.assertEqual(self.client.get(path).status_code,401)
+        evidence=self.client.get(path,headers=self.auth).json()
+        self.assertEqual(evidence['scope'],'registro')
+        self.assertEqual(evidence['counts'],counts)
+        self.assertTrue({str(i) for i in (audio,video,derived,photo,frame)} <= {f['id'] for f in evidence['items']})
+        self.assertNotIn(str(unlinked),{f['id'] for f in evidence['items']})
+        txt=next(f for f in evidence['items'] if f['type']=='chat')
+        original='/evidence/'+txt['id']+'/download'
+        self.assertEqual(self.client.get(original).status_code,401)
+        self.assertIn(b'Vecina',self.client.get(original,headers=self.auth).content)
 
     def test_indexes_do_not_make_one_report_per_message(self):
         self.assertEqual(len(self.findings),4)

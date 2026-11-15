@@ -12,7 +12,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
     const uploadedNames=[];
-    let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false;
+    let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
@@ -20,13 +20,14 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
       if(['/reportes','/semaforos'].includes(path))return route.fulfill({
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
+      if(path==='/marca-esteban.png')return route.fulfill({contentType:'image/png',body:readFileSync('semaforos/assets/logo-esteban.png')});
       if(path==='/semaforos/datos'){
         assert.equal(request.headers().authorization,undefined);
         return route.fulfill({json:{cutoff:'2026-11-14T12:00:00Z',boundary_version:null,conversations_included:1,
           items:[{code:'P-SYNTHETIC',date:'2026-11-14T11:00:00Z',intersection:'calle 5 con carrera 70',
             description:'Falla mencionada',revision:'pendiente',processing:'completado',preliminary:true,
-            reports_at_intersection:1}],
-          map:{width:720,height:430,markers:[],polygons:[],grid:[]}}});
+            reports_at_intersection:1,evidence_scope:'registro',evidence_counts:{chat:1,audio:2,audio_video:1,image:3}}],
+          map:{width:720,height:430,markers:publicPin?[{code:'P-SYNTHETIC',x:360,y:250}]:[],polygons:[],grid:[]}}});
       }
       if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
           '/metrics.html','/metrics.js','/metrics.css','/reports.js','/reports.css'].includes(path))return route.continue();
@@ -42,6 +43,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
       }
+      else if(path==='/public-records/P-SYNTHETIC/evidence'){
+        result={scope:'registro',items:[{id:'file-synthetic',name:'chat-sintético.txt',type:'chat'}],counts:{chat:1}};
+      }
+      else if(path==='/evidence/file-synthetic/download')return route.fulfill({contentType:'text/plain',body:'Texto sintético'});
       else if(path==='/report-map'){
         result={cutoff:'2026-11-14T12:00:00Z',boundary_version:'test',map:{width:720,height:430,
           markers:locationSaved?[{code:'R-000001',x:360,y:250}]:[],polygons:[],grid:[]},
@@ -231,9 +236,32 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/semaforos');
     await page.getByText('Conversaciones incluidas',{exact:true}).waitFor();
-    await page.getByText('P-SYNTHETIC',{exact:true}).waitFor();
-    await page.getByText(/Preliminar · sin revisión humana/).waitFor();
+    await page.getByText('calle 5 con carrera 70',{exact:true}).waitFor();
+    assert.equal(await page.locator('#recordCodeHeader').isVisible(),false);
+    assert.equal(await page.locator('#recordStateHeader').isVisible(),false);
+    await page.getByText('Registros en este cruce',{exact:true}).first().waitFor();
+    assert.ok(await page.evaluate(()=>document.getElementById('recordsPanel')
+      .compareDocumentPosition(document.getElementById('mapPanel')) & Node.DOCUMENT_POSITION_FOLLOWING));
     assert.equal(await page.locator('#pdfPanel').isVisible(),false);
+    assert.ok(await page.getByAltText('Ingeniero Esteban Oli').evaluate(img=>img.complete && img.naturalWidth>0));
+    await page.getByText('7 archivos',{exact:true}).click();
+    await page.getByRole('link',{name:'2 audios de WhatsApp',exact:true}).waitFor();
+    await page.getByRole('link',{name:'1 audio extraído de video',exact:true}).waitFor();
+    await page.getByRole('link',{name:'3 fotos',exact:true}).waitFor();
+    const target=await page.getByRole('link',{name:'1 chat TXT',exact:true}).getAttribute('href');
+    publicPin=true;
+    await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+    await page.locator('.map-pin').waitFor();
+    assert.ok(await page.evaluate(()=>document.getElementById('mapPanel')
+      .compareDocumentPosition(document.getElementById('recordsPanel')) & Node.DOCUMENT_POSITION_FOLLOWING));
+    await page.goto('http://127.0.0.1:8765'+target);
+    assert.equal(await page.locator('#evidenceAccess').isVisible(),false);
+    await page.locator('#reportKey').fill('x'.repeat(32));
+    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.getByText('chat-sintético.txt',{exact:true}).waitFor();
+    const original=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Descargar',exact:true}).click();
+    assert.equal((await original).suggestedFilename(),'chat-sintético.txt');
     assert.deepEqual(errors,[]);
     console.log('Panel: acceso, carga interrumpida/reanudada, agrupación explícita en reporte, móvil y salida OK (API simulada).');
   }finally{await browser.close();}

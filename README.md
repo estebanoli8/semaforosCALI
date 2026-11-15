@@ -47,7 +47,7 @@ Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y med
 ## Uso y verificación
 
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
-- La consulta pública genera su corte a partir de lo que ya está guardado. Muestra cruces y menciones reconocibles, estado de procesamiento y conteos de registros preliminares. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.
+- La consulta pública genera su corte a partir de lo que ya está guardado. La tabla prioriza cruces identificados e incluye conteos por intersección y por tipo de evidencia. Los enlaces a originales, incluido el chat TXT, requieren la clave del equipo. El mapa aparece debajo de la tabla mientras no tenga puntos. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.
 - El portal de métricas se abre desde **Métricas de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.
 - Para desplegar desde `main`, usar **Easypanel → semaforos → semaforos-core → Deploy**. Planificarlo al terminar el lote, porque el reemplazo del contenedor interrumpe las tareas activas.
 - [GitHub Actions](https://github.com/estebanoli8/semaforosCALI/actions) verifica el núcleo con PostgreSQL y el panel con Chromium, incluida la vista móvil. Las pruebas usan datos sintéticos. Las cifras del piloto provienen del VPS.

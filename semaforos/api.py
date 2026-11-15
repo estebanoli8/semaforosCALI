@@ -415,6 +415,14 @@ def create_app(store=None, root=None, config=None, token=None):
         from .report_map import snapshot
         return snapshot(store,root,public=True)
 
+    @private.get('/public-records/{code}/evidence')
+    def public_record_evidence(code: str):
+        from .report_map import snapshot
+        try:
+            return snapshot(store,root,public=True,evidence_code=code)
+        except ReportError:
+            raise HTTPException(404,'Registro público no disponible')
+
     @private.put('/reports/{ident}/map')
     def record_location(ident: UUID,body: ReportLocation):
         from .report_map import save_location
@@ -469,7 +477,7 @@ def create_app(store=None, root=None, config=None, token=None):
         response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
-        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src blob:; media-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         return response
 
     # Carcasa sin datos: las operaciones y consultas requieren Bearer.
@@ -483,6 +491,10 @@ def create_app(store=None, root=None, config=None, token=None):
     @app.get('/semaforos')
     def report_page():
         return FileResponse(Path(__file__).with_name('web')/'reports.html')
+
+    @app.get('/marca-esteban.png')
+    def report_logo():
+        return FileResponse(Path(__file__).with_name('assets')/'logo-esteban.png',media_type='image/png')
 
     @app.get('/reports.js')
     def report_script():

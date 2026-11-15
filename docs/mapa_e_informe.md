@@ -16,6 +16,10 @@ El corte se calcula en solo lectura desde la cola, los mensajes ya importados, t
 
 La descripción usa vocabulario predefinido, tipos de vía normalizados, duraciones acotadas y cantidades explícitas. La publicación automática incluye fecha y estado, sin nombres, contactos, archivos, enlaces ni texto libre de chat/transcripción. Las filas preliminares no se insertan como reportes revisados. El PDF general privado sigue siendo el corte de la tabla de reportes consolidados.
 
+La tabla pública ordena primero los cruces que se pudieron identificar. **Registros en este cruce** cuenta las filas asociadas a esa intersección en el corte, incluida la fila abierta. El mapa está debajo de la tabla cuando aún no tiene puntos.
+
+**Evidencias** muestra cantidades y enlaces por tipo. Distingue audio de WhatsApp, audio extraído de video, fotos, videos originales, fotogramas, TXT y otros archivos. Cuando se pueden asociar por los enlaces del chat, se cuentan los archivos del registro. Si la asociación de los medios es insuficiente, se muestra el inventario de la conversación identificado como tal. El TXT aporta el contexto de la conversación. Los enlaces abren el inventario privado con la clave del equipo. El catálogo público solo entrega las cantidades por tipo.
+
 ## Cartografía en el VPS
 
 La capa oficial de referencia es [POT – Perímetro urbano de Cali](https://datos.cali.gov.co/dataset/pot-perimetro-urbano), publicada por Planeación/IDESC. Exportarla desde [el servicio WFS de IDESC](https://www.cali.gov.co/planeacion/publicaciones/46986/servicios-wfs-idesc/) con QGIS como GeoJSON en EPSG:4326. Seleccionar la capa `pot_2014:bcs_lim_perimetro_urbano` y colocarla en `/data/core/cartografia/cali-urbano.geojson` del volumen persistente, o indicar su ruta con `SC_URBAN_BOUNDARY`. Usar Polygon o MultiPolygon, opcionalmente envueltos en Feature o FeatureCollection. El servidor registra su huella SHA-256. La [ficha de la capa](https://mg-idesc.cali.gov.co/geonetwork/srv/api/records/8b181bf1-88d7-41c9-beaf-c7c2840ef724) documenta la licencia CC BY-SA 4.0.
