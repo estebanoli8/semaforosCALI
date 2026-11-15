@@ -51,3 +51,75 @@ solo ayuda a las etapas locales que pueden usar esos hilos; Ollama consume CPU
 en su propio servicio. Cambiar límites en Easypanel requiere desplegar y
 reinicia el servicio; esperar a que termine la tarea actual y comprobar después
 el estado del trabajador, los volúmenes y la cola.
+
+## Corte agregado del piloto
+
+Ejecuta este bloque en la consola de `semaforos-core` mientras se procesa
+`detalle-qwen-v3`. La consulta de solo lectura es compatible con el despliegue
+`bc03ef2` y usa un mismo corte de PostgreSQL para todos los conteos.
+
+```bash
+/usr/local/bin/python - <<'PY'
+from collections import Counter
+from semaforos.detailed import read_conversations
+from semaforos.quality_metrics import collect
+from semaforos.store import Store
+from semaforos.text_fields import FIELDS
+
+batch = "detalle-qwen-v3"
+with Store().connect() as db:
+    db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    cut = db.execute("SELECT now() AT TIME ZONE 'America/Bogota' AS local").fetchone()
+    tasks = db.execute("""
+        SELECT stage, CASE WHEN state='running' AND lease_until<=now()
+                           THEN 'running_vencido' ELSE state END AS status, count(*) AS n
+        FROM jobs WHERE experiment_id=%s AND NOT (payload ? 'superseded_by_review')
+        GROUP BY 1,2 ORDER BY 1,2
+    """, (batch,)).fetchall()
+    uploads = db.execute("""
+        SELECT state,count(*) AS n FROM uploads WHERE experiment_id=%s
+        GROUP BY state ORDER BY state
+    """, (batch,)).fetchall()
+    cohort = {row["id"] for row in db.execute("""
+        SELECT e.conversation_id::text AS id FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+        WHERE j.experiment_id=%s AND NOT (j.payload ? 'superseded_by_review')
+        UNION
+        SELECT result->>'conversation_id' FROM uploads
+        WHERE experiment_id=%s AND state='received'
+    """, (batch,batch))}
+    rows = [row for row in read_conversations(db)[0] if str(row["id"]) in cohort]
+    profiles = db.execute("""
+        SELECT r.model_identity->>'extraction' AS profile,
+               r.model_identity->>'threads' AS threads, count(*) AS n
+        FROM runs r JOIN jobs j ON j.id=r.job_id
+        WHERE j.experiment_id=%s AND j.stage='text' AND r.state='completed'
+          AND NOT (j.payload ? 'superseded_by_review') AND NOT (r.output ? 'excluded')
+        GROUP BY 1,2 ORDER BY 1,2
+    """, (batch,)).fetchall()
+    metrics = collect(db,batch,None)
+
+print("Corte Cali:", cut["local"])
+print("Tareas:", tasks)
+print("ZIP:", uploads)
+print("Conversaciones del detalle por estado:",
+      dict(Counter(row["analysis_state"] for row in rows)))
+print("Conversaciones con hallazgos por campo:", {
+    field: sum(any(episode["fields"][field] for episode in row["episodes"]) for row in rows)
+    for field in FIELDS
+})
+print("Qwen por perfil e hilos:", profiles)
+print("Qwen llamadas y tiempos:", dict(metrics["qwen_calls"]))
+print("Evaluaciones Qwen por campo:", {
+    field: item["samples"] for field,item in metrics["human_evaluations"]["text"]["fields"].items()
+})
+PY
+```
+
+| Señal | Cómo leerla |
+| --- | --- |
+| `pending`, `running`, `running_vencido` | Pendiente, en curso y ejecución cuyo lease expiró, respectivamente. Una tarea con lease vencido queda por recuperar. |
+| ZIP `receiving`, `queued`, `importing`, `received` | Recepción incompleta, listo para importar, importándose e importado. Reanudar una recepción incompleta seleccionando el mismo ZIP. |
+| Conversaciones y hallazgos | Una conversación cuenta una vez por campo aunque tenga varios episodios. El detalle puede incorporar resultados previos compatibles. El hallazgo indica cobertura, y su acierto requiere cotejo con la evidencia. |
+| `completed` en el detalle | Las etapas de texto, audio y preparación de video seleccionadas para la conversación no muestran trabajo pendiente ni fallos conocidos. La categoría `partial` identifica fallos de alguna de esas etapas. |
+| Perfil e hilos | Una fila `compact-v1` acredita ejecuciones de texto finalizadas con el adaptador nuevo. Los hilos son los solicitados a Ollama. |
+| Qwen | Los percentiles suman llamadas instrumentadas por conversación, incluidos rescates. Durante la tanda pueden reflejar conversaciones aún abiertas. Para medir aceleración usar el [protocolo emparejado](experimentos.md#comparación-de-qwen-en-el-vps). |

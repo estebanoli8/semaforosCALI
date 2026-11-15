@@ -1,6 +1,8 @@
 # Checkpoint del repositorio — 2026-11-08
 
-## Decisiones vigentes
+Este checkpoint recoge el diseño y la implementación inicial. El [README](../README.md#estado-del-proyecto) y el [registro del piloto](detalle_qwen.md#piloto-en-el-vps) registran el estado posterior del VPS.
+
+## Decisiones del 8 de noviembre
 
 El usuario aprobó las seis decisiones, el diccionario completo y los seis indicadores del documento de 2026-11-08. Añadió modificabilidad, comparación sencilla de pruebas, documentación paralela y este repositorio como fuente de código. docs/diccionario.md contiene el detalle aprobado.
 

@@ -1,7 +1,7 @@
 # Semáforos Cali — diccionario y decisiones aprobadas
 
 Fecha: 8 de noviembre de 2026, Colombia. Versión: 1.0 aprobada.
-Estado: APROBADO por Esteban el 8 de noviembre de 2026. Las seis decisiones, variables e indicadores quedan vigentes. No acredita implementación ni despliegue.
+Estado: aprobado como línea base por Esteban el 8 de noviembre de 2026. Las decisiones operativas posteriores sobre ZIP, luces, PDF y detalle ciudadano se resumen al final.
 Referencia: Checkpoint_Semaforos_Cali_2026-11-06.md y conversación posterior sobre una entrega integral instalable.
 
 ## 1. Propósito de esta revisión
@@ -306,3 +306,18 @@ Esta visibilidad es parte de la decisión 3. No agrega nuevamente una columna �
 Estas verificaciones no necesitan convertirse en una serie de instalaciones manuales del usuario. La implementación integrada debe reunirlas en un diagnóstico inicial y una configuración breve.
 
 El desarrollo procede con estas reglas. Los cambios futuros se registran con versión y decisión; las verificaciones técnicas pendientes no reabren lo aprobado.
+
+## Actualización operativa del 15 de noviembre de 2026
+
+El detalle privado agrupa por ciudadano y conversación. El rango de fechas cubre los mensajes ciudadanos reconocidos. Las etiquetas del detalle tienen el siguiente significado:
+
+| Campo del detalle | Contenido |
+| --- | --- |
+| Daño | Tipo de falla, tiempo que lleva dañada y reincidencia explícita después de una reparación. |
+| Gestión | Presencia o ausencia explícita de guarda, agente de tránsito o equivalente. |
+| Peligro | Accidente o riesgo declarado y el grupo vial afectado si se menciona. |
+| Ubicación | Cruce, dirección, referencia o cercanía. Una ubicación sola puede inferir un reporte de daño al cerrar el análisis. Se muestra como inferencia. |
+
+Se conservan citas y origen. Una fuente en ejecución mantiene pendiente el campo que falta. Un campo sin hallazgo al finalizar figura como **No detectado**. Una falla de procesamiento se registra aparte como análisis parcial. Los relatos independientes de un mismo cruce conservan su identidad.
+
+Dentro de una misma selección de ZIP, el mayor sufijo numérico tiene prioridad por nombre base. Las decisiones de comparación entre exportaciones ya guardadas conservan su historial. YOLO registra presencia y cajas. Se retiró la lectura automática de luces. El PDF privado del nuevo detalle incluye enlaces firmados individuales con vigencia de siete días. [Guía vigente del detalle](detalle_qwen.md).
