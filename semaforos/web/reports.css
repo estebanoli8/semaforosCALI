@@ -47,3 +47,15 @@
 .evidence-speeds { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 7px; font-size: 12px; }
 .evidence-speeds button { padding: 3px 7px; min-width: 33px; }
 .evidence-speeds button[aria-pressed="true"] { color: white; background: var(--green); }
+
+.evidence-card h5 { margin: 12px 0 4px; font-size: 14px }
+.evidence-card dl { margin: 6px 0 12px }
+.evidence-card dt { font-weight: 650 }
+.evidence-card dd { margin: 0 0 8px }
+.evidence-card p { margin: 6px 0 }
+.evidence-review { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0 }
+.evidence-review label { display: flex; gap: 5px; align-items: center; margin: 0 }
+.evidence-review input[type=number] { width: 76px }
+.evidence-review input[type=checkbox] { flex-shrink: 0 }
+.evidence-review small { flex-basis: 100% }
+.evidence-transcript { white-space: pre-wrap; overflow-wrap: anywhere }

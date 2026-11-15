@@ -9,7 +9,8 @@ from .whatsapp import PARSER_VERSION, options, parse_chat, message_chunks
 def is_team_sender(value):
     import unicodedata
     value=''.join(c for c in unicodedata.normalize('NFKC',value or '') if unicodedata.category(c)!='Cf')
-    return ' '.join(value.split()).casefold()=='esteban oli'
+    name = ' '.join(value.split()).casefold().lstrip('~').strip()
+    return name in ('esteban oli','esteban oli semaforos dañados','esteban oli semáforos dañados')
 
 
 def team_audio(store, evidence_id):

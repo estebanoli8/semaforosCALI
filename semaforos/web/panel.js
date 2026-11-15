@@ -1,16 +1,16 @@
 'use strict';
-// Sin tokens en localStorage, URL o cookies. Datos y acciones solo por Bearer.
+// El navegador usa la sesión HttpOnly del equipo.
 const $=id=>document.getElementById(id);
 const states={receiving:'Recibiendo',queued:'En cola de importación',importing:'Validando ZIP',received:'Importado',error:'Error de importación',cancelled:'Cancelado',pending:'Pendiente',running:'Procesando',completed:'Completado',failed:'Falló'};
 const stages={audio:'Audio → texto',detect:'Detección de semáforos',text:'Extracción de texto',video:'Preparación de video'};
-let token='',timer=null,busy=false,pause=false,uploadOffset=0,jobOffset=0,uploadTotal=0,jobTotal=0,chunkSize=4194304;
+let timer=null,busy=false,pause=false,uploadOffset=0,jobOffset=0,uploadTotal=0,jobTotal=0,chunkSize=4194304;
 let selectedJobId=null,selectedState=null,annotationUrl=null;
 let modelResultOffset=0,modelResultTotal=0;
 const pageSize=25;
 function notice(text){$('notice').textContent=text;}
 function size(n){return (n/1024**3).toFixed(2)+' GiB';}
 async function api(path,options={}){
-  const headers={...options.headers,Authorization:'Bearer '+token};
+  const headers={...options.headers};
   if(options.json!==undefined){headers['Content-Type']='application/json';options.body=JSON.stringify(options.json);}
   const response=await fetch(path,{...options,headers,cache:'no-store'});
   const body=await response.json();
@@ -64,7 +64,7 @@ async function showRun(item){
   if(item.stage==='video')$('modelText').textContent=(run.output?.fotogramas?.length||0)+' fotogramas seleccionados. '+(run.output?.audio?'Audio extraído.':'Video sin pista de audio.');
   if(item.stage==='detect'){
     $('modelText').textContent=(run.output?.objects?.length||0)+' semáforos detectados en esta imagen. Las cajas rojas muestran las detecciones del modelo, pendientes de revisión.';
-    const response=await fetch('/runs/'+item.run_id+'/annotated',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+    const response=await fetch('/runs/'+item.run_id+'/annotated',{cache:'no-store'});
     if(selectedJobId!==item.id)return;
     if(response.ok){
       const image=await response.blob();if(selectedJobId!==item.id)return;
@@ -99,7 +99,6 @@ async function loadModelResults(){
   $('previousModelResults').disabled=modelResultOffset===0;$('nextModelResults').disabled=modelResultOffset+pageSize>=modelResultTotal;
 }
 async function refresh(){
-  if(!token)return;
   const [summary,uploads,jobs]=await Promise.all([api('/summary'),api('/uploads?offset='+uploadOffset+'&limit='+pageSize),api('/jobs?offset='+jobOffset+'&limit='+pageSize)]);
   chunkSize=summary.chunk_bytes;$('conversations').textContent=summary.conversations;$('originals').textContent=summary.original_files;
   $('space').textContent=size(summary.disk_free_bytes);$('reserve').textContent='Reserva protegida: '+size(summary.disk_reserve_bytes);
@@ -176,8 +175,29 @@ function showZipSelection(groups) {
 $('files').addEventListener('change', () => showZipSelection(selectZipVersions($('files').files)));
 async function digest(data){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 function log(message){const li=document.createElement('li');li.textContent=message;$('uploadLog').append(li);}
-$('loginForm').onsubmit=async event=>{event.preventDefault();token=$('token').value;try{await refresh();$('token').value='';$('login').hidden=true;$('workspace').hidden=false;notice('');clearInterval(timer);timer=setInterval(()=>refresh().catch(e=>notice(e.message)),5000);}catch(e){token='';notice('No se pudo entrar: '+e.message);}};
-$('logout').onclick=()=>{document.dispatchEvent(new Event('sc:logout'));pause=true;token='';clearInterval(timer);clearAnnotation();selectedJobId=null;$('workspace').hidden=true;$('login').hidden=false;$('result').textContent='';$('modelText').textContent='';$('resultBox').hidden=true;notice('Sesión cerrada. Las tareas ya en cola continúan en el servidor.');};
+async function enter(){
+  await refresh();
+  $('login').hidden=true;
+  $('workspace').hidden=false;
+  notice('');
+  clearInterval(timer);
+  timer=setInterval(()=>refresh().catch(e=>notice(e.message)),5000);
+}
+$('loginForm').onsubmit=async event=>{
+  event.preventDefault();
+  const key=$('token').value;
+  $('token').value='';
+  try{await teamSession.open(key);await enter();}catch(e){notice(e.message);}
+};
+$('logout').onclick=async()=>{
+  try{await teamSession.close();}catch(e){notice(e.message);return;}
+  document.dispatchEvent(new Event('sc:logout'));
+  pause=true;clearInterval(timer);clearAnnotation();selectedJobId=null;
+  $('workspace').hidden=true;$('login').hidden=false;
+  $('result').textContent='';$('modelText').textContent='';$('resultBox').hidden=true;
+  notice('Sesión cerrada. Las tareas en cola continúan.');
+};
+teamSession.active().then(active=>{if(active)return enter();}).catch(e=>notice(e.message));
 $('pause').onclick=()=>{pause=true;$('uploadStatus').textContent='Pausando al terminar el bloque actual…';};
 $('closeResult').onclick=()=>{selectedJobId=null;selectedState=null;clearAnnotation();$('resultBox').hidden=true;};
 $('loadResults').onclick=()=>loadModelResults().catch(e=>notice(e.message));

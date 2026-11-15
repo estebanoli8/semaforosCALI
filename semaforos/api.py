@@ -16,6 +16,7 @@ from .files import contained
 from .messages import chat_sources
 from .evaluation import wer, detection_metrics
 from .reports import ReportError, change as change_report, detail as report_detail
+from .report_media import COOKIE, create_media_router, require_same_origin, session_identity
 
 
 class ExportDecision(BaseModel):
@@ -53,6 +54,7 @@ class ReportLocation(BaseModel):
 
 class ReportExport(BaseModel):
     share_evidence: bool = False
+    action_report: bool = False
 
 
 class UploadStart(BaseModel):
@@ -97,8 +99,19 @@ def create_app(store=None, root=None, config=None, token=None):
     store=store or Store();root=root or storage_root();config=config or load_config()
     token=token or os.environ['SC_API_TOKEN']
     if len(token)<32:raise ValueError('SC_API_TOKEN_requires_32_characters')
-    def auth(authorization: str=Header(default='')):
-        if not hmac.compare_digest(authorization.encode(),('Bearer '+token).encode()):raise HTTPException(401,'Acceso privado')
+    def valid_bearer(authorization):
+        return hmac.compare_digest(authorization.encode(),('Bearer '+token).encode())
+
+    def bearer_auth(authorization: str=Header(default='')):
+        if not valid_bearer(authorization):
+            raise HTTPException(401,'Acceso privado')
+
+    def auth(request: Request, authorization: str=Header(default='')):
+        if valid_bearer(authorization):
+            return
+        session_identity(token,request.cookies.get(COOKIE,''))
+        if request.method not in ('GET','HEAD','OPTIONS'):
+            require_same_origin(request)
     app=FastAPI(title='Semáforos Cali · Núcleo privado',docs_url=None,redoc_url=None,openapi_url=None)
     private=APIRouter(dependencies=[Depends(auth)])
     uploads=Uploads(store,root)
@@ -289,15 +302,26 @@ def create_app(store=None, root=None, config=None, token=None):
         return {'total':total,'items':rows}
     @private.post('/reviews')
     def review(body:Review):
-        if body.field not in ('transcription','boxes','assertions'):raise HTTPException(400,'Campo de revisión inválido')
-        with store.connect() as c:r=c.execute("SELECT r.*,j.stage FROM runs r JOIN jobs j ON j.id=r.job_id WHERE r.id=%s AND r.state='completed'",(body.run_id,)).fetchone()
+        stages={'transcription':'audio','boxes':'detect','assertions':'text','frame_counts':'detect'}
+        if body.field not in (*stages,'location_detected'):
+            raise HTTPException(400,'Campo de revisión inválido')
+        with store.connect() as c:r=c.execute("SELECT r.*,j.stage,e.modality FROM runs r JOIN jobs j ON j.id=r.job_id JOIN evidence e ON e.id=j.evidence_id WHERE r.id=%s AND r.state='completed'",(body.run_id,)).fetchone()
         if not r:raise HTTPException(404,'Predicción completada no encontrada')
-        if {'transcription':'audio','boxes':'detect','assertions':'text'}[body.field]!=r['stage']:raise HTTPException(400,'Campo incompatible con la etapa')
+        allowed=('text','audio') if body.field=='location_detected' else (stages[body.field],)
+        if r['stage'] not in allowed or (body.field=='frame_counts' and r['modality']!='frame'):
+            raise HTTPException(400,'Campo incompatible con la etapa')
         # Validar antes de registrar la etiqueta; las observaciones sin métrica se conservan.
         metrics=None
         try:
             if body.field=='transcription':metrics=wer(body.label,r['output']['text'])
             elif body.field=='boxes':metrics=detection_metrics(r['output']['objects'],body.label)
+            elif body.field=='frame_counts':
+                if not isinstance(body.label,dict) or set(body.label)!=set(('observed','detected')) or any(
+                        type(n) is not int or not 0<=n<=1000 for n in body.label.values()):
+                    raise ValueError()
+            elif body.field=='location_detected':
+                if type(body.label) is not bool:
+                    raise ValueError()
             elif not isinstance(body.label,list):raise ValueError()
         except (ValueError,TypeError,KeyError,StopIteration):raise HTTPException(400,'Formato de etiqueta inválido')
         ident=store.review(body.run_id,body.field,body.label,body.reviewer,body.comment)
@@ -405,6 +429,15 @@ def create_app(store=None, root=None, config=None, token=None):
         if body.action=='create':raise HTTPException(400,'Usa /reports para crear')
         return change_report(store,body.model_dump(mode='json',exclude_unset=True),ident)
 
+    @private.get('/team-session')
+    def team_session():
+        return {'active':True}
+
+    @private.get('/action-records')
+    def action_records():
+        from .report_map import snapshot
+        return snapshot(store,root,team=True)
+
     @private.get('/report-map')
     def private_report_map():
         from .report_map import snapshot
@@ -436,7 +469,7 @@ def create_app(store=None, root=None, config=None, token=None):
         from .report_pdf import make_export
         origin=os.getenv('SC_REPORT_ORIGIN') or str(request.base_url)
         try:
-            ident,path=make_export(store,root,token,body.share_evidence,origin)
+            ident,path=make_export(store,root,token,body.share_evidence,origin,action_report=body.action_report)
         except ReportError as exc:
             raise HTTPException(400,str(exc))
         return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf',
@@ -483,6 +516,8 @@ def create_app(store=None, root=None, config=None, token=None):
     # Carcasa sin datos: las operaciones y consultas requieren Bearer.
     @app.get('/')
     def panel():return FileResponse(Path(__file__).with_name('web')/'index.html')
+    @app.get('/team.js')
+    def team_script():return FileResponse(Path(__file__).with_name('web')/'team.js',media_type='text/javascript')
     @app.get('/panel.js')
     def panel_js():return FileResponse(Path(__file__).with_name('web')/'panel.js',media_type='text/javascript')
     @app.get('/panel.css')
@@ -559,7 +594,6 @@ def create_app(store=None, root=None, config=None, token=None):
     @private.post('/uploads/{ident}/retry')
     def retry_upload(ident:UUID):return uploads.retry(ident)
 
-    from .report_media import create_media_router
-    app.include_router(create_media_router(store,root,token,auth))
+    app.include_router(create_media_router(store,root,token,bearer_auth))
     app.include_router(private)
     return app

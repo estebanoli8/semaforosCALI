@@ -17,7 +17,6 @@ const errorLabels = {
   adapter_failed:'El adaptador terminó con error',
   sin_codigo:'Sin código registrado',
 };
-let accessKey = '';
 let activeRequest;
 
 function element(tag, content) {
@@ -260,7 +259,7 @@ async function update() {
   get('metricsStatus').textContent = 'Consultando resultados…';
   try {
     const response = await fetch('/model-metrics?' + query, {
-      headers:{Authorization:'Bearer ' + accessKey},cache:'no-store',signal:controller.signal,
+      cache:'no-store',signal:controller.signal,
     });
     if (response.status === 401) {
       signOut();
@@ -290,7 +289,6 @@ async function update() {
 function signOut() {
   activeRequest?.abort();
   activeRequest = undefined;
-  accessKey = '';
   get('metricsWorkspace').hidden = true;
   get('login').hidden = false;
   get('metricsContent').replaceChildren();
@@ -301,13 +299,18 @@ function signOut() {
   get('metricsStatus').textContent = '';
   get('metricsToken').focus();
 }
-get('metricsLogin').onsubmit = event => {
+get('metricsLogin').onsubmit = async event => {
   event.preventDefault();
-  accessKey = get('metricsToken').value;
-  get('metricsToken').value = '';
-  update();
+  const key=get('metricsToken').value;
+  get('metricsToken').value='';
+  try { await teamSession.open(key); await update(); }
+  catch (error) { get('metricsStatus').textContent=error.message; }
 };
-get('metricsLogout').onclick = signOut;
+get('metricsLogout').onclick = async () => {
+  try { await teamSession.close(); signOut(); }
+  catch (error) { get('metricsStatus').textContent=error.message; }
+};
+teamSession.active().then(active=>{if(active)update();});
 get('metricsRefresh').onclick = update;
 get('metricsPeriod').onchange = update;
 get('metricsExperiment').onchange = update;

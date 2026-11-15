@@ -16,7 +16,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
-    await page.route('**/*',async route=>{
+    await page.context().route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
       if(['/reportes','/semaforos'].includes(path))return route.fulfill({
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
@@ -31,21 +31,26 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           map:{width:720,height:430,markers:publicPin?[{code:'P-SYNTHETIC',x:360,y:250}]:[],polygons:[],grid:[]}}});
       }
       if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
-          '/metrics.html','/metrics.js','/metrics.css','/reports.js','/reports.css'].includes(path))return route.continue();
+          '/team.js','/metrics.html','/metrics.js','/metrics.css','/reports.js','/reports.css'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
       if(path==='/report-media/session'){
         if(request.method()==='DELETE'){mediaSession=false;return route.fulfill({status:204});}
         assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
         mediaSession=true;return route.fulfill({status:204});
       }
+      if(path==='/team-session')return route.fulfill({status:mediaSession?200:401,json:{active:mediaSession}});
       if(path.startsWith('/report-media/')) {
         if(!mediaSession) return route.fulfill({status:401});
         if(path==='/report-media/records/P-SYNTHETIC'){
           return route.fulfill({json:{scope:'registro',intersection:'Calle 5 con Carrera 70',
+            situacion_presentada:'Se reporta una falla.',
             items:[['text','chat','chat-sintético.txt'],['image','image','foto-sintética.jpg'],
               ['audio','audio','voz-sintética.ogg'],['video','video','video-sintético.mp4']]
               .map(([id,type,name])=>({id,type,name,content:'/report-media/files/'+id+'/content',
-                download:'/report-media/files/'+id+'/download',thumbnail:type==='image'?'/marca-esteban.png':undefined}))}});
+                download:'/report-media/files/'+id+'/download',thumbnail:type==='image'?'/marca-esteban.png':undefined,
+                analysis:type==='chat'?{state:'completed',summaries:['Se identificó un cruce'],run_id:'run-synthetic'}:
+                  type==='audio'?{state:'failed',error:'adapter_failed'}:undefined,
+                transcription:type==='video'?{state:'completed',text:'Transcripción sintética del video'}:undefined}))}});
         }
         if(path==='/report-media/files/text/content')return route.fulfill({contentType:'text/plain; charset=utf-8',
           body:'Primera línea del chat\nÚltima línea del chat'});
@@ -53,7 +58,8 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           body:'Texto original'});
         return route.fulfill({status:404});
       }
-      assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
+      assert.equal(request.headers().authorization,undefined);
+      assert.equal(mediaSession,true);
       let result;
       if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:showSyntheticJob?[{stage:'detect',state:'completed',n:1},{stage:'text',state:'running',n:1}]:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
       else if(path==='/model-metrics'){
@@ -63,6 +69,15 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           quality_samples:1,word_errors:2,reference_words:8}],
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
+      }
+      else if(path==='/action-records'){
+        result={cutoff:'2026-11-14T12:00:00Z',map:null,conversations_included:1,totals:{records:1,crossings:1},
+          items:[{code:'P-SYNTHETIC',date:'2026-11-14T11:00:00Z',intersection:'calle 5 con carrera 70',
+            description:'Se reporta una falla.',reports_at_intersection:1,evidence_scope:'registro',evidence_counts:{chat:1}}]};
+      }
+      else if(path==='/reviews'&&request.method()==='POST'){
+        const body=request.postDataJSON();assert.equal(body.field,'location_detected');assert.equal(body.label,false);
+        result={id:'review-synthetic'};
       }
       else if(path==='/report-map'){
         result={cutoff:'2026-11-14T12:00:00Z',boundary_version:'test',map:{width:720,height:430,
@@ -226,7 +241,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.getByRole('button',{name:'Entrar',exact:true}).click();
     await page.getByText('WER · tasa de error de palabras').waitFor();
     assert.match(await page.locator('#metricsContent').textContent(),/25 %/);
-    assert.equal(await page.getByRole('img').count(),2);
+    assert.equal(await page.locator('#metricsContent').getByRole('img').count(),2);
     const filtered=page.waitForResponse(resp=>resp.url().includes('/model-metrics?experiment=test'));
     await page.locator('#metricsExperiment').selectOption('test');
     await filtered;
@@ -236,9 +251,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
     await page.screenshot({path:'test-artifacts/metrics-mobile.png',fullPage:true});
     await page.getByRole('button',{name:'Salir',exact:true}).click();
+    await page.locator('#login').waitFor({state:'visible'});
     assert.equal(await page.locator('#metricsContent').textContent(),'');
     assert.deepEqual(errors,[]);
-    await page.goto('http://127.0.0.1:8765/reportes');
+    await page.goto('http://127.0.0.1:8765/reportes?ubicaciones=1');
     await page.locator('#reportKey').fill('x'.repeat(32));
     await page.getByRole('button',{name:'Entrar',exact:true}).click();
     await page.getByRole('button',{name:'R-000001',exact:true}).click();
@@ -251,6 +267,21 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal((await pdfDownload).suggestedFilename(),'semaforos-cali-example-cut.pdf');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
+    await page.goto('http://127.0.0.1:8765/reportes');
+    await page.getByText('Se reporta una falla.',{exact:true}).waitFor();
+    assert.equal(await page.locator('#mapPanel').isVisible(),false);
+    assert.equal(await page.locator('#reportLogin').isVisible(),false);
+    await page.getByText('1 archivo',{exact:true}).click();
+    const popup = page.waitForEvent('popup');
+    await page.getByRole('link',{name:'1 chat TXT'}).click();
+    const detail=await popup;
+    await detail.getByText('Se identificó un cruce',{exact:true}).waitFor();
+    await detail.getByText('Transcripción sintética del video',{exact:true}).waitFor();
+    assert.equal(await detail.locator('#reportLogin').isVisible(),false);
+    await detail.getByRole('button',{name:'Guardar evaluación',exact:true}).click();
+    await detail.getByText('Evaluación guardada',{exact:true}).waitFor();
+    assert.equal(new URL(page.url()).pathname,'/reportes');
+    await detail.close();
     await page.goto('http://127.0.0.1:8765/semaforos');
     await page.getByText('1 conversación incluida',{exact:true}).waitFor();
     assert.match(await page.locator('#reportStats').textContent(),/Fotos3Videos1Audios3/);

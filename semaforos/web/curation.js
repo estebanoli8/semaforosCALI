@@ -5,7 +5,7 @@ let curationOffset=0,curationBusy=false,curationEpoch=0;
 function cnode(tag,text){const e=document.createElement(tag);if(text)e.textContent=text;return e;}
 function releaseMedia(element){for(const media of element.querySelectorAll('img,audio'))if(curatedUrls.delete(media.src))URL.revokeObjectURL(media.src);}
 async function privateMedia(url,element){
-  const epoch=curationEpoch,r=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const epoch=curationEpoch,r=await fetch(url,{cache:'no-store'});
   if(!r.ok)throw new Error('Archivo no disponible');
   const blob=await r.blob();if(epoch!==curationEpoch||!element.isConnected)return;
   const u=URL.createObjectURL(blob);curatedUrls.add(u);element.src=u;
@@ -184,7 +184,7 @@ async function loadCurationConversations(offset=curationOffset){
   moreConversations.hidden=curationOffset>=data.total;
 }
 async function loadCuration(){
-  if(curationBusy||!token)return;curationBusy=true;
+  if(curationBusy)return;curationBusy=true;
   try{await loadCurationConversations(0);for(const group of curationGroups.values())await updateGroup(group);}
   finally{curationBusy=false;}
 }

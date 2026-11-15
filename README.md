@@ -12,7 +12,8 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
 | Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
 | Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` incluye automáticamente los resultados disponibles de conversaciones procesadas como registros preliminares anonimizados. También muestra las versiones depuradas que el equipo haya editado. Despliegue y prueba en el VPS pendientes de confirmación. |
-| Entregables pendientes | Cargar la cartografía oficial en el VPS, conectar el dominio definitivo y activar correo por reporte mediante n8n. |
+| Acción Popular | Panel del equipo con una sola sesión, tabla y detalle ligados por evidencia y reproceso selectivo. Pendiente de desplegar y validar con audios en el VPS. |
+| Entregables pendientes | Cartografía en fase posterior, dominio definitivo y correo por reporte en n8n. |
 
 Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
 
@@ -46,6 +47,8 @@ Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y med
 
 ## Uso y verificación
 
+- **Acción Popular.** Entra una vez con la clave del equipo. **Reporte** muestra la situación sintetizada por registro y el botón de PDF del mismo corte. Cada enlace de evidencia abre **Detalle de reporte** en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
+- **Reproceso.** Tras desplegar, ejecuta `python -m semaforos.reprocess` para estimar el lote. Prueba con `--conversation UUID --apply` antes de encolar todo con `--apply`. Se reutilizan las detecciones visuales y los artefactos del video. Consulta el [procedimiento de Acción Popular](docs/accion_popular.md).
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
 - La consulta pública genera su corte a partir de lo que ya está guardado. La tabla prioriza cruces identificados e incluye conteos por intersección y por tipo de evidencia. Los indicadores superiores cuentan reportes, fotos, videos, audios y cruces. Los enlaces abren un visor privado compartido por los tipos de evidencia, con lectura del TXT completo, fotos con cajas cuando hay detecciones y audio y video a 1×, 1,5× o 2×. Se ingresa una vez por sesión con la clave del equipo. El mapa aparece debajo de la tabla mientras no tenga puntos. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.
 - El portal de métricas se abre desde **Métricas de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.

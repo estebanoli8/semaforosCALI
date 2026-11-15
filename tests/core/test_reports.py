@@ -204,7 +204,11 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(login.status_code,204)
             self.assertIn('HttpOnly',login.headers['set-cookie'])
             self.assertIn('Secure',login.headers['set-cookie'])
-            self.assertIn('Path=/report-media',login.headers['set-cookie'])
+            self.assertIn('Path=/',login.headers['set-cookie'])
+            self.assertEqual(browser.get('/team-session').status_code,200)
+            self.assertEqual(browser.get('/action-records').status_code,200)
+            self.assertEqual(browser.post('/report-exports',json={},
+                                          headers={'Origin':'https://invalid.example'}).status_code,403)
             media=browser.get(record).json()
             by_type={file['type']:file for file in media['items']}
             content=browser.get(by_type['chat']['content']).text
@@ -222,8 +226,47 @@ class ReportTests(unittest.TestCase):
                     r,_,b=thumbnail.getpixel((0,0))
                     self.assertEqual(r>b,want_annotation)
             self.assertEqual(browser.get(by_type['image']['thumbnail'][:-1]+'Z').status_code,404)
-            self.assertEqual(browser.delete('/report-media/session').status_code,204)
+            self.assertEqual(browser.delete('/report-media/session',headers={'Origin':'https://testserver'}).status_code,204)
             self.assertEqual(browser.get(by_type['chat']['content']).status_code,401)
+
+
+    def test_action_report_export_reviews_and_selective_replay(self):
+        from semaforos.reprocess import queue_sources
+        data=self.client.get('/action-records',headers=self.auth).json()
+        self.assertIsNone(data['map'])
+        self.assertTrue(data['items'])
+        self.assertTrue(all(r['description']==r['situacion_presentada'] for r in data['items']))
+        export=self.client.post('/report-exports',headers=self.auth,json={'action_report':True})
+        self.assertEqual(export.status_code,200)
+        self.assertTrue(export.content.startswith(b'%PDF-'))
+        with TestClient(self.client.app,base_url='https://testserver') as browser:
+            browser.post('/report-media/session',headers=self.auth)
+            item=data['items'][0]
+            url='/report-media/records/'+item['code']
+            detail=browser.get(url).json()
+            self.assertEqual(detail['situacion_presentada'],item['description'])
+            chat=next(f for f in detail['items'] if f['type']=='chat')
+            self.assertEqual(chat['analysis']['state'],'completed')
+            review={'run_id':chat['analysis']['run_id'],'field':'location_detected','label':False,'reviewer':'Equipo'}
+            self.assertEqual(browser.post('/reviews',json=review).status_code,403)
+            self.assertEqual(browser.post('/reviews',json=review,headers={'Origin':'https://testserver'}).status_code,200)
+            detail=browser.get(url).json()
+            self.assertIs(next(f for f in detail['items'] if f['type']=='chat')['analysis']['review'],False)
+        audio=self.store.evidence(self.cid,'audio.ogg','audio','voz.ogg',1,'1'*64)
+        video=self.store.evidence(self.cid,'video.mp4','video','video.mp4',1,'2'*64)
+        self.store.evidence(self.cid,'from-video.wav','audio','pista.wav',1,'3'*64,parent=video)
+        frame=self.store.evidence(self.cid,'frame.jpg','frame','fotograma.jpg',1,'4'*64,parent=video)
+        self.store.enqueue(frame,'detect','test-base',self.config)
+        self.assertEqual(queue_sources(self.store,self.config,conversation=self.cid)['audios_de_video'],1)
+        with self.store.connect() as c:
+            self.assertFalse(c.execute("SELECT 1 FROM jobs WHERE experiment_id='accion-popular-v2'").fetchone())
+        for _ in range(2):
+            queue_sources(self.store,self.config,conversation=self.cid,apply=True)
+        with self.store.connect() as c:
+            jobs=c.execute("SELECT stage,evidence_id FROM jobs WHERE experiment_id='accion-popular-v2'").fetchall()
+        self.assertEqual(len([job for job in jobs if job['stage']=='audio']),2)
+        self.assertTrue(any(job['evidence_id']==audio for job in jobs))
+        self.assertEqual({job['stage'] for job in jobs},{'audio','text'})
 
 
     def test_indexes_do_not_make_one_report_per_message(self):
