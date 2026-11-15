@@ -145,12 +145,18 @@ class ReportTests(unittest.TestCase):
             self.assertNotIn(private,str(data))
 
     def test_public_evidence_counts_and_originals_require_team_key(self):
+        from io import BytesIO
+        from PIL import Image
+        from psycopg.types.json import Jsonb
         from semaforos.files import sha256
         from uuid import UUID
 
         def file(name,modality,parent=None):
             path=self.root/name
-            path.write_bytes(b'synthetic attachment')
+            if modality in ('frame','image'):
+                Image.new('RGB',(1000,700),'blue').save(path)
+            else:
+                path.write_bytes(b'synthetic attachment')
             return self.store.evidence(UUID(self.cid),name,modality,name,path.stat().st_size,sha256(path),parent=parent)
 
         audio=file('voz privada.ogg','audio')
@@ -159,14 +165,24 @@ class ReportTests(unittest.TestCase):
         frame=file('fotograma.jpg','frame',video)
         photo=file('foto privada.jpg','image')
         unlinked=file('foto sin vínculo.jpg','image')
+        original_annotation=self.root/'annotated.jpg'
+        Image.new('RGB',(1000,700),'red').save(original_annotation)
+        job_id=self.store.enqueue(photo,'detect','test-annotations',self.config)
         source=self.findings[0]['message_id']
         with self.store.connect() as c:
+            c.execute("UPDATE jobs SET state='completed', attempts=1 WHERE id=%s",(job_id,))
+            c.execute('''INSERT INTO runs (id,job_id,attempt,state,finished_at,output)
+                VALUES (%s,%s,1,'completed',now(),%s)''',
+                (uuid4(),job_id,Jsonb({'objects':[{'bbox':[1,2,3,4]}],'annotation':str(original_annotation)})))
             for name,ident in [('voz.ogg',audio),('video.mp4',video),('foto.jpg',photo)]:
                 c.execute("INSERT INTO message_attachments VALUES(%s,%s,%s,'linked')",(source,name,ident))
         data=self.client.get('/semaforos/datos').json()
         item=next(row for row in data['items'] if row['evidence_scope']=='registro')
         counts={'chat':1,'audio':1,'video':1,'audio_video':1,'image':1,'frame':1}
         self.assertEqual(item['evidence_counts'],counts)
+        self.assertEqual(data['totals']['photos'],2)
+        self.assertEqual(data['totals']['videos'],1)
+        self.assertEqual(data['totals']['audios'],2)
         for private in (str(audio),'voz privada.ogg','_chat.txt','evidence_ids','_source_ids'):
             self.assertNotIn(private,str(data))
         path='/public-records/'+item['code']+'/evidence'
@@ -180,6 +196,35 @@ class ReportTests(unittest.TestCase):
         original='/evidence/'+txt['id']+'/download'
         self.assertEqual(self.client.get(original).status_code,401)
         self.assertIn(b'Vecina',self.client.get(original,headers=self.auth).content)
+        with TestClient(self.client.app,base_url='https://testserver') as browser:
+            record='/report-media/records/'+item['code']
+            self.assertEqual(browser.get(record).status_code,401)
+            self.assertEqual(browser.post('/report-media/session').status_code,401)
+            login=browser.post('/report-media/session',headers=self.auth)
+            self.assertEqual(login.status_code,204)
+            self.assertIn('HttpOnly',login.headers['set-cookie'])
+            self.assertIn('Secure',login.headers['set-cookie'])
+            self.assertIn('Path=/report-media',login.headers['set-cookie'])
+            media=browser.get(record).json()
+            by_type={file['type']:file for file in media['items']}
+            content=browser.get(by_type['chat']['content']).text
+            self.assertIn('Quinta con 5, apagado.',content)
+            self.assertIn('Carrera 70, intermitente.',content)
+            for media_type in ('audio','audio_video','video'):
+                response=browser.get(by_type[media_type]['content'],headers={'Range':'bytes=0-3'})
+                self.assertEqual(response.status_code,206,response.text)
+                self.assertEqual(response.content,b'synt')
+            for media_type,want_annotation in (('image',True),('frame',False)):
+                response=browser.get(by_type[media_type]['thumbnail'])
+                self.assertEqual(response.status_code,200)
+                with Image.open(BytesIO(response.content)) as thumbnail:
+                    self.assertLessEqual(thumbnail.width,480)
+                    r,_,b=thumbnail.getpixel((0,0))
+                    self.assertEqual(r>b,want_annotation)
+            self.assertEqual(browser.get(by_type['image']['thumbnail'][:-1]+'Z').status_code,404)
+            self.assertEqual(browser.delete('/report-media/session').status_code,204)
+            self.assertEqual(browser.get(by_type['chat']['content']).status_code,401)
+
 
     def test_indexes_do_not_make_one_report_per_message(self):
         self.assertEqual(len(self.findings),4)

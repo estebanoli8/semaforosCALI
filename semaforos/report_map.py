@@ -241,4 +241,7 @@ def snapshot(store, root, *, public=False, evidence_code=None):
     response={'cutoff':cutoff,'items':items,'map':chart,'boundary_version':boundary_version}
     if public:
         response['conversations_included']=len(public_conversations)
+        response['totals']={'records':len(items),'crossings':len(totals),'photos':evidence.get('image',0),
+                            'videos':evidence.get('video',0),'audios':evidence.get('audio',0)+evidence.get('audio_video',0),
+                            'whatsapp_audios':evidence.get('audio',0),'video_audios':evidence.get('audio_video',0)}
     return response

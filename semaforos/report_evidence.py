@@ -39,6 +39,7 @@ def attach_evidence(c, items, evidence_code=None):
     ''',(message_ids,message_ids)):
         linked[row['source_id']].add(row['evidence_id'])
 
+    counted = {}
     for item in items:
         inventory = inventories[item.pop('_conversation_id')]
         report_files = item.pop('_report_evidence_ids',None)
@@ -60,9 +61,10 @@ def attach_evidence(c, items, evidence_code=None):
             selected.update(ident for ident,row in inventory.items() if row['modality']=='chat')
         matching = [row for ident,row in inventory.items() if ident in selected]
         counts = dict(Counter(evidence_type(row) for row in matching))
+        counted.update((row['id'],evidence_type(row)) for row in matching)
         item['evidence_counts']=counts
         item['evidence_scope']=scope
         if evidence_code is not None:
-            return {'scope':scope,'counts':counts,'items':[
+            return {'scope':scope,'counts':counts,'intersection':item['intersection'],'items':[
                 {'id':row['id'],'type':evidence_type(row),'name':row['original_name']} for row in matching]}
-    return None
+    return dict(Counter(counted.values()))
