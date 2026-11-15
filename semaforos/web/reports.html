@@ -12,7 +12,8 @@
   <div class="report-intro">
     <nav class="inline" id="teamLinks" hidden><a href="/">Procesamiento</a><a href="/metricas">Métricas de modelos</a><a href="/semaforos">Vista pública</a></nav>
     <h1>Reportes y mapa de Cali</h1>
-    <p>Consulta los cruces y el estado de revisión de cada reporte ciudadano.</p>
+    <p id="reportIntro">Consulta los cruces y el estado de revisión de cada reporte ciudadano.</p>
+    <p id="preliminaryNote" class="muted" hidden>Las filas preliminares provienen del procesamiento automático. Se agrupan por conversación, remitente, fecha y cruce cuando está identificado. Las menciones describen lo relatado por la ciudadanía.</p>
   </div>
   <section id="reportLogin" hidden>
     <h2>Acceso del equipo</h2>
@@ -61,7 +62,7 @@
         <textarea id="publicDescription" maxlength="1000" rows="3"></textarea>
         <p class="muted">Revisa el cruce, el punto y la descripción antes de publicar. Omite teléfonos, nombres de reportantes y direcciones particulares.</p>
         <label for="mapReviewer">Quién revisó estos datos</label><input id="mapReviewer" maxlength="100" required>
-        <label class="check-label"><input type="checkbox" id="publishReport"> Mostrar este registro en la vista pública</label>
+        <label class="check-label"><input type="checkbox" id="publishReport"> Mostrar la versión editada en la vista pública</label>
         <button>Guardar ubicación y visibilidad</button>
       </form>
       <p id="editStatus" role="status"></p>

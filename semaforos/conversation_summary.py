@@ -88,7 +88,7 @@ def gps_coordinates(text):
             pin = re.search(r'!3d([+-]?\d+\.\d{3,})!4d([+-]?\d+\.\d{3,})', unquote(url.path))
             if pin:
                 candidates.append((pin.groups(), literal))
-    for match in re.finditer(r'(?:\bgps\b|coordenadas|ubicaci[oó]n|location)\s*[:=]?\s*' + COORDINATE_PAIR, text, re.I):
+    for match in re.finditer(r'(?:\bgps\b|coordenadas|ubicaci[oó]n|location)(?:\s+de(?:l| la)\s+(?:sem[aá]foro|cruce|intersecci[oó]n))?\s*[:=]?\s*' + COORDINATE_PAIR, text, re.I):
         candidates.append((match.groups(), match.group()))
     for line in text.splitlines():
         pair = re.fullmatch(COORDINATE_PAIR, line.strip())
@@ -203,16 +203,17 @@ def source_rows(connection, conversation_id=None):
             WHERE r.state='completed' AND NOT (r.output ? 'excluded')
             ORDER BY e.id,(correction.human_label IS NOT NULL) DESC,r.finished_at DESC,r.id DESC
         )
-        SELECT e.conversation_id,m.id,m.sender_visible AS sender,m.body_text AS text,'chat' AS origin
+        SELECT e.conversation_id,m.id,m.sender_visible AS sender,m.body_text AS text,'chat' AS origin,m.sent_at
         FROM latest_parse p JOIN messages m ON m.parse_id=p.id JOIN selected_evidence e ON e.id=m.evidence_id
         WHERE m.kind<>'system'
         UNION ALL
         SELECT a.conversation_id,a.id,linked.sender,a.text,
-            CASE WHEN a.parent_id IS NULL THEN 'audio_whatsapp' ELSE 'audio_video' END
+            CASE WHEN a.parent_id IS NULL THEN 'audio_whatsapp' ELSE 'audio_video' END,linked.sent_at
         FROM latest_audio a LEFT JOIN LATERAL (
             SELECT CASE WHEN count(DISTINCT m.sender_visible)=1 AND count(*)=count(m.sender_visible)
                 THEN min(m.sender_visible) END AS sender,
-                bool_and(lower(btrim(m.sender_visible))='esteban oli') AS team_only
+                bool_and(lower(btrim(m.sender_visible))='esteban oli') AS team_only,
+                CASE WHEN count(DISTINCT m.id)=1 THEN min(m.sent_at) END AS sent_at
             FROM message_attachments ma JOIN messages m ON m.id=ma.message_id
             WHERE ma.state='linked' AND ma.evidence_id IN (a.id,a.parent_id)
         ) linked ON true WHERE linked.team_only IS DISTINCT FROM true

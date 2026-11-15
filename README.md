@@ -11,7 +11,7 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Procesamiento | Dos carriles, texto y multimedia. Conserva texto literal y originales, enlaza derivaciones y muestra el avance por tarea y conversación. |
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
 | Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
-| Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` muestra los registros con contenido depurado que el equipo habilite. Despliegue y prueba en el VPS pendientes de confirmación. |
+| Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` incluye automáticamente los resultados disponibles de conversaciones procesadas como registros preliminares anonimizados. También muestra las versiones depuradas que el equipo haya editado. Despliegue y prueba en el VPS pendientes de confirmación. |
 | Entregables pendientes | Cargar la cartografía oficial en el VPS, conectar el dominio definitivo y activar correo por reporte mediante n8n. |
 
 Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
@@ -47,6 +47,7 @@ Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y med
 ## Uso y verificación
 
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
+- La consulta pública genera su corte a partir de lo que ya está guardado. Muestra cruces y menciones reconocibles, estado de procesamiento y conteos de registros preliminares. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.
 - El portal de métricas se abre desde **Métricas de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.
 - Para desplegar desde `main`, usar **Easypanel → semaforos → semaforos-core → Deploy**. Planificarlo al terminar el lote, porque el reemplazo del contenedor interrumpe las tareas activas.
 - [GitHub Actions](https://github.com/estebanoli8/semaforosCALI/actions) verifica el núcleo con PostgreSQL y el panel con Chromium, incluida la vista móvil. Las pruebas usan datos sintéticos. Las cifras del piloto provienen del VPS.
