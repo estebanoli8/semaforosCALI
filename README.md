@@ -1,54 +1,78 @@
 # Semáforos Cali
 
-IA multimodal para conservar, interpretar y consultar reportes ciudadanos de semáforos en Cali. Proyecto de Esteban Oliveros Montoya, Maestría en IA Aplicada, Icesi.
+Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fallas de semáforos en Cali. Proyecto de Esteban Oliveros Montoya para la Maestría en Inteligencia Artificial Aplicada de la Universidad Icesi.
 
-## Estado real
+## Estado del proyecto
 
-- Consolidación asistida y revisión privada: ocho variables por fuente, historial, complementos, descarte y protección contra duplicados. [Uso y límites](docs/reportes_revision.md).
+| Componente | Estado |
+| --- | --- |
+| Operación en el VPS | Panel privado, trabajador, PostgreSQL y almacenamiento persistente operativos en Docker y Easypanel. Ollama se ejecuta en un servicio separado del mismo VPS. |
+| Ingesta | Carga reanudable de ZIP de WhatsApp. En una misma selección se sube la versión con el sufijo numérico mayor para cada nombre base. |
+| Procesamiento | Dos carriles, texto y multimedia. Conserva texto literal y originales, enlaza derivaciones y muestra el avance por tarea y conversación. |
+| Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
+| Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
+| Entregables pendientes | Mapa y tabla de consulta pública, PDF general con fecha de generación, y correo por reporte mediante n8n. |
 
-- Mensajes WhatsApp versionados: fechas, remitentes privados, texto literal y referencias a archivos. [Trazabilidad y supuestos](docs/mensajes_whatsapp.md).
+Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
 
-- Panel privado integrado: cargas reanudables → PostgreSQL → trabajador multimodal. [Carga web y recuperación](docs/carga_web.md).
-- Nuevo núcleo privado `semaforos/`: PostgreSQL, cola, adaptadores audio/visión/texto, etiquetas y métricas. [Implementación y límites](docs/nucleo_multimodal.md). Inferencia real y despliegue pendientes.
+## Flujo y modelos
 
-- Ingesta continua: más de 100 carpetas disponibles según el usuario, con cargas diarias variables. No hay tamaño fijo de lote.
-- `prototype/v0_4/` añade carga por bloques y validación independiente; probada localmente, sin despliegue. [Alcance y límites](prototype/v0_4/LEEME.md).
+1. El equipo carga los ZIP desde el panel privado. El núcleo guarda los archivos en el VPS y registra su procedencia en PostgreSQL.
+2. El parser lee el chat y enlaza los adjuntos identificables. Los microreportes reconocen coordenadas GPS explícitas. El texto y el audio atribuidos de forma explícita a Esteban Oli se excluyen de las entradas de los modelos.
+3. Los trabajadores generan transcripciones, detecciones y extracciones. La curaduría conserva por separado la predicción original y la corrección humana.
 
-- 36 conversaciones completaron el procesamiento textual en el VPS, según el operador.
-- `prototype/v0_3/` conserva el código disponible: texto mediante Ollama, extracción de audio y hasta 15 fotogramas por video. Incluye sus pruebas.
-- Audio e imagen todavía no se interpretan automáticamente en este prototipo.
-- La carga web ya está conectada al núcleo. Consolidación automática entre versiones, mapa, PDF, correo e integración operativa n8n siguen pendientes. Este repositorio no despliega automáticamente al VPS.
+| Componente | Función | Evaluación |
+| --- | --- | --- |
+| Whisper Small con faster-whisper | Transcribe notas de voz y audio de video en español. Usa CPU INT8, audio mono a 16 kHz y detección de voz. | Tasa de error de palabras (WER) con transcripciones humanas de referencia. |
+| YOLO11n | Detecta semáforos y dibuja cajas en fotos y fotogramas. La lectura automática de colores quedó retirada. | Precisión y exhaustividad con cajas de referencia e IoU ≥ 0,5. |
+| Qwen3 4B Instruct en Ollama | Extrae ubicación, daño, duración declarada y afectaciones desde el chat y las transcripciones. Cada afirmación se vincula a una cita comprobable. | Tiempos, fallos y tokens por segundo. La exactitud por campo requiere etiquetas humanas. |
+| FFmpeg | Extrae el audio y hasta 15 fotogramas por video según la regla de muestreo aprobada. | Tiempos y fallos de preparación. |
 
-## Documentación vigente
+## Resultados observados en el VPS
 
-- [Diccionario y seis decisiones aprobadas](docs/diccionario.md)
-- [Arquitectura modular y extensibilidad](docs/arquitectura.md)
-- [Experimentos y comparación](docs/experimentos.md)
-- [Estado y plan de implementación](docs/estado.md)
-- [Operación y despliegue](docs/operacion.md)
-- [Historial de cambios](CHANGELOG.md)
+Corte del panel del **14 de noviembre de 2026**, hora de Cali. Se registraron **163 conversaciones**, **696 archivos originales** y **3.609 tareas finalizadas**. De ellas, **3.551 quedaron completadas** y **58 registraron error**.
 
-## Pruebas locales
+| Etapa | Completadas | Fallidas |
+| --- | ---: | ---: |
+| Transcripción de audio | 254 | 0 |
+| Detección en fotos y fotogramas | 2.712 | 0 |
+| Extracción de texto | 391 | 55 |
+| Preparación de video | 194 | 3 |
 
-Requisitos: Python 3.11 o 3.12 y FFmpeg/ffprobe en PATH.
+Las tareas son ejecuciones por etapa. Una detección completada significa que terminó el análisis de una imagen. Un reporte es un registro ciudadano consolidado con sus fuentes.
+
+Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y medidos, la generación del JSON consumió el **78 %** del tiempo observado. Son casos seleccionados por un fallo previo. El rendimiento con conversaciones nuevas y la calidad de sus extracciones se evalúan por separado.
+
+## Uso y verificación
+
+- El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
+- El portal de métricas se abre desde **Métricas de modelos** o en la ruta `/metricas`, con la clave del equipo. Muestra actividad, tiempos, fallos, salidas parciales y calidad cuando existen referencias humanas.
+- Para desplegar desde `main`, usar **Easypanel → semaforos → semaforos-core → Deploy**. Planificarlo al terminar el lote, porque el reemplazo del contenedor interrumpe las tareas activas.
+- [GitHub Actions](https://github.com/estebanoli8/semaforosCALI/actions) verifica el núcleo con PostgreSQL y el panel con Chromium, incluida la vista móvil. Las pruebas usan datos sintéticos. Las cifras del piloto provienen del VPS.
+
+Las pruebas locales del comparador y los prototipos usan Python 3.11 y FFmpeg/ffprobe.
 
 ```bash
 python -m unittest discover -s tests -v
 python -m unittest discover -s prototype/v0_3 -p 'test_*.py' -v
+python -m unittest discover -s prototype/v0_4 -p 'test_*.py' -v
 ```
 
-Las pruebas del prototipo generan archivos sintéticos temporales. No necesitan ZIP ciudadanos, acceso al VPS ni modelos descargados. La inferencia real se evaluará aparte con datos privados y etiquetas humanas.
-
-## Comparar experimentos
+Para comparar ejecuciones sobre el mismo conjunto de datos y las mismas etiquetas:
 
 ```bash
 python tools/compare_runs.py runs/base.json runs/candidato.json --output runs/comparacion.md
 ```
 
-El comparador exige el mismo conjunto de datos y la misma versión de etiquetas. Muestra métricas y diferencias; no inventa una calificación global. Formato y ejemplo: [experimentos](docs/experimentos.md).
+## Documentación
 
-## Evolución
+- [Arquitectura](docs/arquitectura.md), [carga web](docs/carga_web.md) y [despliegue en Easypanel](docs/despliegue_easypanel.md).
+- [Curaduría y dos carriles](docs/curaduria_rendimiento.md), [audio y microreportes](docs/audio_y_microreportes.md), [consolidación y revisión](docs/reportes_revision.md) y [seguimiento de la cola](docs/observabilidad.md).
+- [Diseño de experimentos](docs/experimentos.md), [diccionario aprobado el 8 de noviembre](docs/diccionario.md) y [checkpoint inicial](docs/estado.md). Las decisiones posteriores sobre selección de ZIP y lectura de luces se reflejan en el estado actual de este README.
+- [Historial de cambios](CHANGELOG.md).
 
-Cada cambio debe incluir código, pruebas pertinentes y actualización de documentación. Modelos, prompts y parámetros se versionarán por configuración. Una configuración propuesta no cambia el prototipo hasta conectar su lector. El despliegue integral se entregará en un paquete reproducible después de las pruebas y comprobación de compatibilidad con el VPS.
+## Regla de mantenimiento
 
-El repositorio contiene código y ejemplos sintéticos. Originales ciudadanos, contactos, modelos binarios, salidas privadas y secretos se conservan fuera de Git.
+**Cada mejora debe actualizar este README en el mismo PR.** Registrar qué cambió, cómo se usa o valida y su estado de despliegue. Para cambios de alcance, modelos, datos o configuración, enlazar la documentación técnica correspondiente. Fechar los resultados del VPS e identificar su origen y denominador.
+
+GitHub contiene código y ejemplos sintéticos. Originales ciudadanos, contactos, pesos de modelos, salidas privadas y secretos se mantienen fuera del repositorio.
