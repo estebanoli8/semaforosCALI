@@ -31,10 +31,18 @@ def detail(c, ident):
         family AS (SELECT id FROM ancestors UNION SELECT e.id FROM evidence e JOIN family p ON e.parent_id=p.id)
         SELECT e.id,e.parent_id,e.modality,e.original_name,e.sha256 FROM evidence e JOIN family f ON e.id=f.id ORDER BY e.created_at,e.id''',(ident,messages)).fetchall()
     eids=[e['id'] for e in evidence]
-    jobs=c.execute("SELECT state,expanded_at,expansion_error,updated_at FROM jobs WHERE evidence_id=ANY(%s::uuid[]) AND stage<>'lights'",(eids,)).fetchall()
+    jobs = c.execute("""
+        SELECT j.state, j.expanded_at, j.expansion_error, j.updated_at,
+               EXISTS (SELECT 1 FROM runs r WHERE r.job_id=j.id AND r.state='completed'
+                       AND r.output->'omitted_assertions' IS DISTINCT FROM '[]'::jsonb
+                       AND r.output ? 'omitted_assertions') AS partial_extraction
+        FROM jobs j
+        WHERE j.evidence_id=ANY(%s::uuid[]) AND j.stage<>'lights'
+          AND NOT (j.payload ? 'superseded_by_review')
+    """, (eids,)).fetchall()
     if any(j['state']=='running' for j in jobs):processing='procesando'
     elif any(j['state']=='pending' for j in jobs):processing='en_cola'
-    elif any(j['state']=='failed' or j['expansion_error'] for j in jobs):processing='parcial_con_errores'
+    elif any(j['state']=='failed' or j['expansion_error'] or j['partial_extraction'] for j in jobs):processing='parcial_con_errores'
     elif any(j['expanded_at'] is None for j in jobs):processing='procesando'
     else:processing='completado'
     dates=[f['sent_at'] for f in findings if f['sent_at']]

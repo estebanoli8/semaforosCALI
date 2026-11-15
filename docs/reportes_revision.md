@@ -22,6 +22,7 @@ Los reportes se guardan inmediatamente con `revision=pendiente`. El detalle expo
 
 ## Historial y protección contra duplicados
 
+- Cada reporte ciudadano independiente conserva su registro incluso si coincide con otro en cruce, falla y fecha. El cruce sirve para agrupar y contar reportes. Los mensajes y adjuntos que complementan un mismo relato pueden compartir reporte. Una copia del mismo mensaje en otro ZIP no se cuenta como un nuevo reporte ciudadano.
 - Cada operación lleva un UUID de petición: reenviar la misma operación no crea otro reporte ni otra versión.
 - Una agrupación idéntica de fuentes ya vigente se rechaza incluso con otra petición. Una superposición parcial es visible en la tabla; corresponde al revisor decidir si hay un complemento o un hecho distinto.
 - Dos personas no pueden sobrescribirse silenciosamente: una versión desactualizada se rechaza y hay que recargar el reporte.
@@ -31,6 +32,8 @@ Los reportes se guardan inmediatamente con `revision=pendiente`. El detalle expo
 - No se fusionan fuentes de conversaciones distintas sin resolver esa relación; el API devuelve un conflicto explícito. La reconciliación de exportaciones ampliadas no está resuelta todavía.
 
 ## Evidencia y procesamiento
+
+La extracción conserva las afirmaciones verificadas cuando otras citas de la misma respuesta carecen de respaldo. La ejecución registra las omisiones y el reporte puede quedar parcial. Solo se corrigen diferencias de mayúsculas o espacios cuando se puede recuperar el fragmento literal original de la fuente.
 
 Se incluyen las evidencias de las afirmaciones, los adjuntos explícitamente vinculados a sus mensajes y los padres/derivados de esos archivos. Así, un audio extraído mantiene su video fuente. Esto documenta la relación de origen; no asegura que todas las imágenes describan el mismo cruce. Las asociaciones semánticas que sean ambiguas necesitan revisión.
 

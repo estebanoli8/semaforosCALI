@@ -6,6 +6,7 @@ from pathlib import Path
 import resource
 import sys
 import time
+from urllib.error import HTTPError
 from .files import atomic_json, contained, sha256
 
 
@@ -23,6 +24,8 @@ SAFE_ERROR_CODES = frozenset({
 
 def safe_error_code(exc):
     """Only publish known static codes; arbitrary error messages may contain source data."""
+    if isinstance(exc, HTTPError) and type(exc.code) is int and 100 <= exc.code <= 599:
+        return f'http_{exc.code}'
     if type(exc) is ValueError and str(exc) in SAFE_ERROR_CODES:
         return str(exc)
     return type(exc).__name__
