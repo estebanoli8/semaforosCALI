@@ -1,0 +1,38 @@
+.metrics-page {max-width:1240px}
+.metrics-intro {background:#173b31;color:#fff;padding:clamp(24px,4vw,52px);border-radius:18px}
+.metrics-intro a {color:#d6ead9;font-size:.9rem}
+.metrics-intro h1 {margin:.45em 0 .2em}
+.metrics-intro p {margin:0;color:#e2ede6}
+.metrics-controls {display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:24px 0}
+.metrics-controls > div {flex:1 1 15rem;min-width:0}
+.metrics-controls label {margin-top:0}
+.metrics-controls select {padding:8px;min-width:0;text-overflow:ellipsis}
+.metrics-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.metrics-card {margin:0;min-width:0;overflow-wrap:anywhere}
+.metrics-card h2 {margin:0}
+.metrics-card p {margin:.5em 0}
+.metrics-card small {display:block}
+.metrics-card h3,.metrics-section h3 {font-size:1rem;margin:1.1em 0 .3em}
+.metrics-values {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.metrics-values div {background:#f4f7f2;border-radius:10px;padding:10px 12px}
+.metrics-values dt {color:var(--muted);font-size:.78rem}
+.metrics-values dd {font-size:1.25rem;font-weight:700;margin:2px 0 0}
+.metrics-list {display:flex;flex-wrap:wrap;gap:4px 14px;padding:0;list-style:none}
+.metrics-list li {font-size:.82rem}
+.metrics-list b {margin-right:.25em}
+.metrics-figure {margin:0;min-width:0}
+.metrics-figure figcaption {color:var(--muted);font-size:.85rem;margin:.4em 0}
+.metrics-bar {display:block;width:100%;height:13px}
+.metrics-chart {display:block;width:100%;height:auto;background:#f5f8f4;border-radius:8px}
+.metrics-chart text {fill:var(--muted);font-size:11px;font-family:system-ui,sans-serif}
+.metrics-chart .gridline {stroke:#cddad0;stroke-width:1}
+.metrics-page .outcome-ok {fill:#286449}
+.metrics-page .outcome-partial {fill:#e8b943}
+.metrics-page .outcome-failed {fill:#b53f37}
+.metrics-chart .outcome-results {fill:#286449}
+.metrics-latency {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 12px;margin:10px 0}
+.metrics-latency meter {grid-column:1/-1;width:100%;height:14px;accent-color:var(--green)}
+.metrics-detail {margin-top:12px;overflow:auto}
+.metrics-detail summary {cursor:pointer;color:var(--green)}
+#metricsStatus {min-height:1.5em;color:var(--muted)}
+@media(max-width:710px){.metrics-grid {grid-template-columns:minmax(0,1fr)}}

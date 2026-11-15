@@ -18,11 +18,20 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const file=Buffer.alloc(chunkSize+23,65);
     await page.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
-      if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css'].includes(path))return route.continue();
+      if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
+          '/metrics.html','/metrics.js','/metrics.css'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
       if(path==='/summary')result={conversations:103,original_files:870,disk_free_bytes:120*1024**3,disk_reserve_bytes:3*1024**3,chunk_bytes:chunkSize,tasks:showSyntheticJob?[{stage:'detect',state:'completed',n:1},{stage:'text',state:'running',n:1}]:[{stage:'audio',state:'completed',n:50},{stage:'detect',state:'pending',n:100}]};
+      else if(path==='/model-metrics'){
+        const filtered=url.searchParams.get('experiment')==='test';
+        result={stages:[{stage:'audio',models:['Whisper Small'],completed:filtered?1:3,partial:0,
+          failed:0,pending:0,running:0,excluded:0,seconds_p50:2.5,seconds_p90:4,time_samples:3,
+          quality_samples:1,word_errors:2,reference_words:8}],
+          as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
+          daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
+      }
       else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
       else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
       else if(path==='/export-relations'&&request.method()==='GET')result={total:relation?1:0,version:relation?1:0,items:relation?[relation]:[]};
@@ -164,6 +173,23 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage)),[]);
     await page.locator('#logout').click();
     await page.locator('#login').waitFor({state:'visible'});
+    await page.goto('http://127.0.0.1:8765/metrics.html');
+    assert.equal(await page.locator('#metricsWorkspace').isVisible(),false);
+    await page.getByLabel('Clave de acceso del equipo').fill('x'.repeat(32));
+    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.getByText('WER · tasa de error de palabras').waitFor();
+    assert.match(await page.locator('#metricsContent').textContent(),/25 %/);
+    assert.equal(await page.getByRole('img').count(),2);
+    const filtered=page.waitForResponse(resp=>resp.url().includes('/model-metrics?experiment=test'));
+    await page.locator('#metricsExperiment').selectOption('test');
+    await filtered;
+    await page.waitForFunction(()=>document.querySelector('.metrics-list b')?.textContent==='1');
+    await page.locator('#metricsDailyStage').selectOption('text');
+    await page.getByText('Sin resultados finalizados en las fechas del gráfico.').waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+    await page.screenshot({path:'test-artifacts/metrics-mobile.png',fullPage:true});
+    await page.getByRole('button',{name:'Salir',exact:true}).click();
+    assert.equal(await page.locator('#metricsContent').textContent(),'');
     assert.deepEqual(errors,[]);
     console.log('Panel: acceso, carga interrumpida/reanudada, agrupación explícita en reporte, móvil y salida OK (API simulada).');
   }finally{await browser.close();}
