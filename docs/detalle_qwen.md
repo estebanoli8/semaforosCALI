@@ -57,7 +57,28 @@ Corte del operador del 15 de noviembre de 2026, después del Deploy. El comando 
 | Preparación de video | 3 | 0 | 0 |
 | Total del corte | 15 | 2 | 74 |
 
-El contenedor informó `SC_PROCESS=all` y dos trabajadores. Un ZIP figuraba importado y dos en recepción. Los derivados de la preparación multimedia explican que el número de tareas conocidas aumente durante una tanda. La tabla es una fotografía del arranque. El corte final, la cobertura de los cuatro campos y los tiempos de Qwen siguen pendientes de verificación en el VPS.
+El contenedor informó `SC_PROCESS=all` y dos trabajadores. Un ZIP figuraba importado y dos en recepción. Los derivados de la preparación multimedia explican que el número de tareas conocidas aumente durante una tanda. La tabla es una fotografía del arranque. ### Corte posterior del mismo día
+
+La cola de tareas de `detalle-qwen-v3` cerró para las **34 conversaciones importadas**. Dos cargas faltaban por terminar la recepción. El diagnóstico usó un corte de PostgreSQL informado por el operador.
+
+| Etapa | Tareas completadas |
+| --- | ---: |
+| Audio | 4 |
+| Detección de semáforos | 46 |
+| Extracción de texto | 41 |
+| Preparación de video | 3 |
+| Total | 94 |
+
+La consulta de tareas registró cero pendientes, en ejecución o fallidas. Las 41 tareas de texto incluyen 39 ejecuciones con identidad `compact-v1` (20 con seis hilos solicitados y 19 con cuatro) y 2 sin perfil e hilos en su identidad. La telemetría reportó 39 llamadas a Ollama en 33 conversaciones, 20.374 tokens de entrada, 7.664 de salida y cero truncamientos y errores registrados. El tiempo acumulado de llamadas por conversación tuvo una mediana de 56,5 s y p90 de 122,4 s.
+
+| Campo mostrado en el detalle | Conversaciones con al menos un hallazgo |
+| --- | ---: |
+| Daño | 31 de 34 (91,2 %) |
+| Gestión | 21 de 34 (61,8 %) |
+| Peligro | 27 de 34 (79,4 %) |
+| Ubicación | 33 de 34 (97,1 %) |
+
+El corte da cobertura marginal por campo y puede incorporar resultados previos del mismo reporte. La cobertura conjunta de los cuatro campos requiere contar la intersección por conversación. El acierto y las omisiones se validan revisando fuentes. Queda pendiente medir el perfil anterior sobre las mismas fuentes y con la misma unidad para calcular la mejora de velocidad.
 
 Para comprobar la función en producción, cotejar en **Detalle de reporte** conversaciones del piloto con referencias de cada campo. Distinguir análisis pendiente, parcial y terminado. Un campo ausente al terminar figura como **No detectado**. La cantidad de conversaciones con un valor mide cobertura. La validación del contenido requiere revisar el original; también cuenta si se omitió un valor que sí aparecía en la fuente. Una ubicación sola puede originar una inferencia de daño que se identifica como tal.
 

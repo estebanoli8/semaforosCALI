@@ -103,10 +103,14 @@ print("Tareas:", tasks)
 print("ZIP:", uploads)
 print("Conversaciones del detalle por estado:",
       dict(Counter(row["analysis_state"] for row in rows)))
+detected = [
+    {field for field in FIELDS if any(episode["fields"][field] for episode in row["episodes"])}
+    for row in rows
+]
 print("Conversaciones con hallazgos por campo:", {
-    field: sum(any(episode["fields"][field] for episode in row["episodes"]) for row in rows)
-    for field in FIELDS
+    field: sum(field in fields for fields in detected) for field in FIELDS
 })
+print("Conversaciones con los cuatro campos:", sum(len(fields)==len(FIELDS) for fields in detected))
 print("Qwen por perfil e hilos:", profiles)
 print("Qwen llamadas y tiempos:", dict(metrics["qwen_calls"]))
 print("Evaluaciones Qwen por campo:", {
@@ -119,7 +123,7 @@ PY
 | --- | --- |
 | `pending`, `running`, `running_vencido` | Pendiente, en curso y ejecución cuyo lease expiró, respectivamente. Una tarea con lease vencido queda por recuperar. |
 | ZIP `receiving`, `queued`, `importing`, `received` | Recepción incompleta, listo para importar, importándose e importado. Reanudar una recepción incompleta seleccionando el mismo ZIP. |
-| Conversaciones y hallazgos | Una conversación cuenta una vez por campo aunque tenga varios episodios. El detalle puede incorporar resultados previos compatibles. El hallazgo indica cobertura, y su acierto requiere cotejo con la evidencia. |
+| Conversaciones y hallazgos | Una conversación cuenta una vez por campo aunque tenga varios episodios. El conteo conjunto exige que los cuatro campos aparezcan en la misma conversación, incluso en episodios diferentes. El detalle puede incorporar resultados previos compatibles. El hallazgo indica cobertura, y su acierto requiere cotejo con la evidencia. |
 | `completed` en el detalle | Las etapas de texto, audio y preparación de video seleccionadas para la conversación no muestran trabajo pendiente ni fallos conocidos. La categoría `partial` identifica fallos de alguna de esas etapas. |
 | Perfil e hilos | Una fila `compact-v1` acredita ejecuciones de texto finalizadas con el adaptador nuevo. Los hilos son los solicitados a Ollama. |
 | Qwen | Los percentiles suman llamadas instrumentadas por conversación, incluidos rescates. Durante la tanda pueden reflejar conversaciones aún abiertas. Para medir aceleración usar el [protocolo emparejado](experimentos.md#comparación-de-qwen-en-el-vps). |

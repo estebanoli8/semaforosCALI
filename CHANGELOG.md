@@ -3,7 +3,7 @@
 ## 2026-11-15 — Piloto de detalle ciudadano y Qwen compacto
 
 - El [PR #18](https://github.com/estebanoli8/semaforosCALI/pull/18) integró los cuatro campos del detalle, el PDF enlazado, las evaluaciones humanas y la alerta de formato del TXT.
-- El corte del operador confirmó la preparación de la cola y el arranque de los carriles de texto y multimedia en el VPS. El cierre de la tanda y la comparación de velocidad siguen pendientes.
+- Los cortes del operador confirmaron el arranque de los dos carriles del VPS y el cierre de las 94 tareas de 34 conversaciones importadas. Dos ZIP seguían en recepción. Quedaron registradas la cobertura por campo y la latencia de Qwen. La comparación emparejada de velocidad sigue pendiente.
 - Se actualizó el procedimiento de verificación con una consulta de solo lectura, estados de carga y criterios de cobertura, calidad y comparación emparejada.
 
 ## 2026-11-15 — Acción Popular
