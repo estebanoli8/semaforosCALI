@@ -46,6 +46,10 @@ function makeCard(item,conversation){
     card.append(cnode('p','No se pudo extraer una pista de audio válida. Revisa el video original.'));
   }
   if(item.stage==='text'){
+    if(output.omitted_assertions?.length){
+      card.append(cnode('p','Extracción parcial: '+output.omitted_assertions.length+
+        ' afirmaciones sin respaldo. Revisa las fuentes originales.'));
+    }
     const original=cnode('details');original.append(cnode('summary','Fuentes originales'),cnode('p',(item.payload?.sources||[]).map(s=>s.text).join('\n')));card.append(original);
   }
   if(item.stage==='detect'&&item.run_id&&item.state==='completed'){

@@ -99,6 +99,19 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(self.client.get('/reports',headers=self.auth).json()['active'],2)
         with self.store.connect() as c:self.assertEqual(c.execute('SELECT count(*) AS n FROM findings').fetchone()['n'],4)
 
+    def test_same_crossing_from_another_citizen_remains_a_separate_report(self):
+        first, _ = self.create(self.selected(['Quinta con 5', 'apagado']))
+        path = self.root / 'Otro ciudadano.zip'
+        with zipfile.ZipFile(path, 'w') as archive:
+            archive.writestr('_chat.txt', '[01/11/26, 10:02] Otro: Quinta con 5, apagado.\n')
+        imported = import_zip(self.store, self.root, path, self.config, 'otro')
+        once(self.store, self.root, runner=self.infer)
+        findings = self.client.get('/findings?conversation_id=' + imported['conversation_id'],
+                                   headers=self.auth).json()['items']
+        second, _ = self.create([finding['id'] for finding in findings])
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual(self.client.get('/reports', headers=self.auth).json()['active'], 2)
+
     def test_review_attach_reopens_and_stale_edit_is_rejected(self):
         ids=self.selected(['Quinta con 5']);report,_=self.create(ids)
         change={'request_id':str(uuid4()),'action':'review','revision':'revisado','expected_version':1,'reviewer':'Revisor','reason':'Cotejado con mensaje original'}

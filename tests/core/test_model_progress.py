@@ -1,5 +1,6 @@
 import json
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 from semaforos.adapters.ollama import chat
 from semaforos.inference import safe_error_code
@@ -42,6 +43,43 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(safe_error_code(ValueError('unbacked_quote')), 'unbacked_quote')
         self.assertEqual(safe_error_code(ValueError('citizen name and text')), 'ValueError')
         self.assertEqual(safe_error_code(RuntimeError('secret database URL')), 'RuntimeError')
+        error = HTTPError('http://private', 503, 'sensitive response', None, None)
+        self.assertEqual(safe_error_code(error), 'http_503')
+
+    def test_preserves_original_literal_and_keeps_partial_extraction_auditable(self):
+        sources = [{'id': 'chat', 'text': 'Semáforo fuera\n de servicio.'}]
+        prediction = {'assertions': [
+            {'source_id': 'S1', 'variable': 'descripcion_dano', 'literal': 'semáforo fuera de servicio'},
+            {'source_id': 'S1', 'variable': 'tiempo_sin_funcionar', 'literal': 'desde hace 30 días'},
+        ], 'summary': 'Fuera de servicio desde hace 30 días'}
+        with patch('semaforos.adapters.text.chat', return_value=(prediction, {}, {})):
+            result, _ = extract(sources, {})
+        self.assertEqual(result['extraction'], {'assertions': [
+            {'source_id': 'chat', 'variable': 'descripcion_dano', 'literal': 'Semáforo fuera\n de servicio'}
+        ], 'summary': None})
+        self.assertEqual(result['omitted_assertions'], [{'assertion_index': 1, 'reason': 'unbacked_quote'}])
+        self.assertEqual(result['raw_extraction'], prediction)
+        self.assertEqual(prediction['assertions'][0]['literal'], 'semáforo fuera de servicio')
+
+    def test_keeps_unbacked_task_failed_when_no_claim_can_be_verified(self):
+        sources = [{'id': 'chat', 'text': 'No está apagado.'}]
+        prediction = {'assertions': [
+            {'source_id': 'S1', 'variable': 'descripcion_dano', 'literal': 'Está fuera de servicio'},
+        ]}
+        with patch('semaforos.adapters.text.chat', return_value=(prediction, {}, {})):
+            with self.assertRaisesRegex(ValueError, 'unbacked_quote'):
+                extract(sources, {})
+
+    def test_truncated_extraction_retries_smaller_groups_with_original_ids(self):
+        sources = [{'id': 'chat-1', 'text': 'Cruce 1'}, {'id': 'chat-2', 'text': 'Cruce 2'}]
+        responses = [ValueError('truncated_model_output')] + [
+            ({'assertions': [{'source_id': 'S1', 'variable': 'ubicacion', 'literal': source['text']}]},
+             {'model': 'test'}, {}) for source in sources
+        ]
+        with patch('semaforos.adapters.text.chat', side_effect=responses):
+            result, _ = extract(sources, {})
+        self.assertEqual([item['source_id'] for item in result['extraction']['assertions']], ['chat-1', 'chat-2'])
+        self.assertEqual(result['recovery']['strategy'], 'split_sources')
 
     def test_partial_text_is_displayed_without_changing_final_json(self):
         class Response:
