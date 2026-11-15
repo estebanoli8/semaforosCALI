@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reportes y mapa · Semáforos Cali</title>
+  <link rel="stylesheet" href="/panel.css"><link rel="stylesheet" href="/reports.css">
+  <script defer src="/reports.js"></script>
+</head>
+<body>
+<header><span class="mark" aria-hidden="true">● ● ●</span><span>SEMÁFOROS CALI</span><span id="audience" class="private">Reportes</span></header>
+<main>
+  <div class="report-intro">
+    <nav class="inline" id="teamLinks" hidden><a href="/">Procesamiento</a><a href="/metricas">Métricas de modelos</a><a href="/semaforos">Vista pública</a></nav>
+    <h1>Reportes y mapa de Cali</h1>
+    <p>Consulta los cruces y el estado de revisión de cada reporte ciudadano.</p>
+  </div>
+  <section id="reportLogin" hidden>
+    <h2>Acceso del equipo</h2>
+    <form id="reportLoginForm">
+      <label for="reportKey">Clave del equipo</label>
+      <div class="inline"><input id="reportKey" type="password" required minlength="32" autocomplete="off"><button>Entrar</button></div>
+    </form>
+  </section>
+  <p id="reportStatus" role="status" aria-live="polite"></p>
+  <div id="reportWork" hidden>
+    <div class="stats report-stats" id="reportStats"></div>
+    <section class="map-panel">
+      <div class="sectionTitle"><h2>Mapa de cruces</h2><button class="secondary" id="reportRefresh">Actualizar</button></div>
+      <div id="reportMap"></div>
+      <p id="mapLegend" class="muted"></p>
+      <p id="mapSelection" class="muted" aria-live="polite"></p>
+    </section>
+    <section id="pdfPanel" hidden>
+      <div class="sectionTitle"><h2>Informe general</h2><button class="secondary" id="reportLogout">Salir</button></div>
+      <p>Genera un PDF fechado con el mapa del corte, las versiones y los reportes vigentes, incluidos los pendientes.</p>
+      <label class="check-label"><input type="checkbox" id="shareEvidence"> Incluir enlaces de evidencia válidos durante 7 días. Quien reciba el enlace podrá abrir el archivo vinculado.</label>
+      <button id="exportPdf">Descargar informe PDF</button>
+    </section>
+    <section>
+      <h2>Registros del corte</h2>
+      <label for="reportSearch">Buscar por código o cruce</label><input type="search" id="reportSearch" placeholder="Calle, carrera o R-000001">
+      <div class="tableScroll"><table>
+        <thead><tr><th>Reporte</th><th>Fecha del mensaje</th><th>Cruce</th><th>Descripción</th><th>Estado</th><th>En el cruce</th></tr></thead>
+        <tbody id="reportRows"></tbody>
+      </table></div>
+      <p id="reportEmpty" class="muted"></p>
+      <div class="pagination">
+        <button id="prevReport" class="secondary">Anterior</button><span id="reportPageInfo"></span><button id="nextReport" class="secondary">Siguiente</button>
+      </div>
+    </section>
+    <section id="editPanel" hidden>
+      <h2 id="editTitle">Revisar ubicación</h2>
+      <form id="locationForm">
+        <label for="crossing">Intersección revisada</label><input id="crossing" required maxlength="240">
+        <div class="coordinates">
+          <div><label for="latitude">Latitud</label><input id="latitude" type="number" step="any" min="-90" max="90"></div>
+          <div><label for="longitude">Longitud</label><input id="longitude" type="number" step="any" min="-180" max="180"></div>
+        </div>
+        <div class="inline" id="coordinateCandidates"></div>
+        <label for="publicDescription">Descripción depurada para la vista pública</label>
+        <textarea id="publicDescription" maxlength="1000" rows="3"></textarea>
+        <p class="muted">Revisa el cruce, el punto y la descripción antes de publicar. Omite teléfonos, nombres de reportantes y direcciones particulares.</p>
+        <label for="mapReviewer">Quién revisó estos datos</label><input id="mapReviewer" maxlength="100" required>
+        <label class="check-label"><input type="checkbox" id="publishReport"> Mostrar este registro en la vista pública</label>
+        <button>Guardar ubicación y visibilidad</button>
+      </form>
+      <p id="editStatus" role="status"></p>
+      <h3>Evidencias de este reporte</h3>
+      <ul id="reportEvidence"></ul>
+    </section>
+  </div>
+</main>
+</body>
+</html>

@@ -60,6 +60,64 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(response.status_code,200,response.text)
         return response.json(),data
 
+    def test_end_to_end_report_map_public_projection_pdf_and_metrics(self):
+        import hashlib
+        from semaforos.report_pdf import signature
+
+        boundary_dir=self.root/'cartografia'
+        boundary_dir.mkdir()
+        (boundary_dir/'cali-urbano.geojson').write_text(
+            '{"type":"Polygon","coordinates":[[[-76.60,3.30],[-76.48,3.30],'
+            '[-76.48,3.52],[-76.60,3.52],[-76.60,3.30]]]}')
+        first,_=self.create()
+        second,_=self.create(self.selected(['Carrera 70','intermitente']))
+        self.assertEqual(self.client.get('/report-map').status_code,401)
+        self.assertEqual(self.client.get('/semaforos/datos').json()['items'],[])
+        self.assertEqual(self.client.post('/report-exports',json={}).status_code,401)
+        self.assertEqual(self.client.get('/reportes').status_code,200)
+        self.assertEqual(self.client.get('/semaforos').status_code,200)
+        for report in (first,second):
+            data={'expected_report_version':1,'expected_version':0,
+                  'latitude':3.43,'longitude':-76.53,'intersection':'Calle 5 con Carrera 70',
+                  'public_description':'Falla comunicada por la ciudadanía.',
+                  'reviewer':'Revisión sintética','published':True}
+            url='/reports/'+report['id']+'/map'
+            saved=self.client.put(url,headers=self.auth,json=data)
+            self.assertEqual(saved.status_code,200,saved.text)
+            self.assertEqual(self.client.put(url,headers=self.auth,json=data).status_code,409)
+        cut=self.client.get('/semaforos/datos').json()
+        self.assertEqual({x['code'] for x in cut['items']},{first['code'],second['code']})
+        self.assertEqual(len(cut['map']['markers']),2)
+        self.assertTrue(all(row['reports_at_intersection']==2 for row in cut['items']))
+        self.assertTrue(all(row['revision']=='pendiente' for row in cut['items']))
+        self.assertTrue(all(set(row)=={'code','date','intersection','description','latitude','longitude',
+                                     'processing','revision','reports_at_intersection','map_state'}
+                            for row in cut['items']))
+        self.assertNotIn('Vecina',str(cut))
+        self.assertEqual(self.client.get('/model-metrics',headers=self.auth).json()['stages'][0]['completed'],1)
+
+        with TestClient(self.client.app,base_url='https://testserver') as https:
+            pdf=https.post('/report-exports',headers=self.auth,json={'share_evidence':True})
+            self.assertEqual(pdf.status_code,200,pdf.text if pdf.status_code!=200 else None)
+            self.assertTrue(pdf.content.startswith(b'%PDF'))
+            export_id=pdf.headers['x-report-export-id']
+            fetch=https.get('/report-exports/'+export_id,headers=self.auth)
+            self.assertEqual(fetch.content,pdf.content)
+            with self.store.connect() as c:
+                stored=c.execute('SELECT * FROM report_pdf_exports WHERE id=%s',(export_id,)).fetchone()
+                self.assertEqual(stored['sha256'],hashlib.sha256(pdf.content).hexdigest())
+                self.assertEqual(len(stored['report_versions']),2)
+                e=stored['evidence_ids'][0]
+                expires=stored['evidence_expires_at']
+            proof=signature('x'*32,export_id,e,expires)
+            path=f'/informe/evidencia/{export_id}/{e}'
+            self.assertEqual(https.get(path).status_code,404)
+            self.assertEqual(https.get(path,params={'firma':proof}).status_code,200)
+            self.assertEqual(https.get(f'/informe/evidencia/{export_id}/{uuid4()}',params={'firma':proof}).status_code,404)
+            with self.store.connect() as c:
+                c.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(export_id,))
+            self.assertEqual(https.get(path,params={'firma':proof}).status_code,404)
+
     def test_indexes_do_not_make_one_report_per_message(self):
         self.assertEqual(len(self.findings),4)
         self.assertEqual(self.client.get('/reports',headers=self.auth).json()['total'],0)
