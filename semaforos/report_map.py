@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .conversation_summary import gps_coordinates
 from .reports import ReportError, detail
+from .public_results import CROSSING, automatic_items
 
 CALI_EXTENT = (-76.62, 3.29, -76.44, 3.55)
 WIDTH, HEIGHT, PAD = 720, 430, 40
@@ -76,7 +77,8 @@ def coordinates(lat, lon):
 
 
 def crossing_key(text):
-    return ' '.join(unicodedata.normalize('NFKC', text).casefold().split())
+    key = ' '.join(unicodedata.normalize('NFKC', text).casefold().split())
+    return ' con '.join(sorted(key.split(' con '))) if CROSSING.fullmatch(key) else key
 
 
 def save_location(store, ident, body):
@@ -155,7 +157,7 @@ def build_map(rows, polygons):
 
 
 REPORTS_QUERY = '''
-SELECT r.id,r.primary_finding_id,l.version AS map_version,l.intersection,l.public_description,l.latitude,l.longitude,l.published,
+SELECT r.id,r.conversation_id,r.primary_finding_id,l.version AS map_version,l.intersection,l.public_description,l.latitude,l.longitude,l.published,
        l.primary_finding_id=r.primary_finding_id AND l.finding_ids=ARRAY(
            SELECT finding_id FROM report_findings WHERE report_id=r.id ORDER BY finding_id
        ) AS location_current
@@ -167,9 +169,11 @@ WHERE r.revision<>'descartado'
 def snapshot(store, root, *, public=False):
     polygons, boundary_version = boundary(root)
     items = []
+    public_conversations = set()
     with store.connect() as c:
         c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         cutoff=c.execute('SELECT now() AS cutoff').fetchone()['cutoff']
+        published_ids = []
         condition = ' AND l.published' if public else ''
         for location in c.execute(REPORTS_QUERY+condition+' ORDER BY r.code DESC').fetchall():
             current = location['location_current']
@@ -194,6 +198,8 @@ def snapshot(store, root, *, public=False):
                   'processing':report['processing_state'],'latitude':lat,'longitude':lon}
             if public:
                 data['_public']=True
+                published_ids.append(location['id'])
+                public_conversations.add(location['conversation_id'])
             else:
                 data.update(id=report['id'],version=report['version'],map_version=location['map_version'] or 0,
                     location_stale=bool(location['map_version'] and not current),
@@ -203,9 +209,30 @@ def snapshot(store, root, *, public=False):
                         for f in findings if f['variable']=='ubicacion' for x in gps_coordinates(f['literal'])],
                     evidence=[{'id':e['id'],'modality':e['modality'],'name':e['original_name']} for e in report['evidence']])
             items.append(data)
-    totals=Counter(crossing_key(row['intersection']) for row in items if row['intersection'])
-    for row in items:
+        if public:
+            blocked = {row['source_id'] for row in c.execute('''
+                SELECT CASE WHEN f.origin='chat' THEN f.message_id ELSE f.evidence_id END AS source_id
+                FROM reports r JOIN report_findings rf ON rf.report_id=r.id JOIN findings f ON f.id=rf.finding_id
+                WHERE r.revision='descartado' OR r.id=ANY(%s::uuid[])
+            ''',(published_ids,))}
+            projected, conversations = automatic_items(c,blocked,points_allowed=bool(polygons))
+            items.extend(projected)
+            public_conversations.update(conversations)
+    if public:
+        items.sort(key=lambda row: (row['date'] is not None,row['date'],row['code']), reverse=True)
+
+    def intersection_key(row):
         title=row['intersection']
-        row['reports_at_intersection']=totals[crossing_key(title)] if title else None
+        if title and (not row.get('preliminary') or CROSSING.fullmatch(title)):
+            return crossing_key(title)
+        return None
+
+    keys=[intersection_key(row) for row in items]
+    totals=Counter(key for key in keys if key is not None)
+    for row,key in zip(items,keys):
+        row['reports_at_intersection']=totals[key] if key else None
     chart=build_map(items,polygons)
-    return {'cutoff':cutoff,'items':items,'map':chart,'boundary_version':boundary_version}
+    response={'cutoff':cutoff,'items':items,'map':chart,'boundary_version':boundary_version}
+    if public:
+        response['conversations_included']=len(public_conversations)
+    return response

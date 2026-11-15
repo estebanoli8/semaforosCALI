@@ -72,7 +72,12 @@ class ReportTests(unittest.TestCase):
         first,_=self.create()
         second,_=self.create(self.selected(['Carrera 70','intermitente']))
         self.assertEqual(self.client.get('/report-map').status_code,401)
-        self.assertEqual(self.client.get('/semaforos/datos').json()['items'],[])
+        preliminary=self.client.get('/semaforos/datos').json()
+        self.assertEqual(preliminary['conversations_included'],1)
+        self.assertGreaterEqual(len(preliminary['items']),2)
+        self.assertTrue(all(row['preliminary'] and row['revision']=='pendiente' for row in preliminary['items']))
+        self.assertNotIn('Vecina',str(preliminary))
+        self.assertEqual(self.client.get('/reports',headers=self.auth).json()['total'],2)
         self.assertEqual(self.client.post('/report-exports',json={}).status_code,401)
         self.assertEqual(self.client.get('/reportes').status_code,200)
         self.assertEqual(self.client.get('/semaforos').status_code,200)
@@ -117,6 +122,25 @@ class ReportTests(unittest.TestCase):
             with self.store.connect() as c:
                 c.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(export_id,))
             self.assertEqual(https.get(path,params={'firma':proof}).status_code,404)
+
+    def test_automatic_public_results_keep_independent_reports_without_leaking_sources(self):
+        for index, text in enumerate((
+                'Semáforo apagado en Calle 5 con Carrera 70. WhatsApp 3001234567.',
+                'El semáforo en Carrera 70 con Calle 5 está apagado. Soy Reportante Privado.'),1):
+            path = self.root / f'WhatsApp privado {index}.zip'
+            with zipfile.ZipFile(path,'w') as z:
+                z.writestr('_chat.txt',f'[03/11/26, 10:00] Remitente privado {index}: {text}')
+            import_zip(self.store,self.root,path,self.config,'Publicación de prueba')
+            once(self.store,self.root,runner=self.infer)
+        data=self.client.get('/semaforos/datos').json()
+        self.assertEqual(data['conversations_included'],3)
+        crossing=[row for row in data['items'] if row['intersection']=='calle 5 con carrera 70']
+        self.assertEqual(len(crossing),2)
+        self.assertEqual(len({row['code'] for row in crossing}),2)
+        self.assertTrue(all(row['reports_at_intersection']==2 and row['latitude'] is None for row in crossing))
+        self.assertEqual(self.client.get('/reports',headers=self.auth).json()['total'],0)
+        for private in ('Reportante Privado','Remitente privado','3001234567','WhatsApp privado'):
+            self.assertNotIn(private,str(data))
 
     def test_indexes_do_not_make_one_report_per_message(self):
         self.assertEqual(len(self.findings),4)

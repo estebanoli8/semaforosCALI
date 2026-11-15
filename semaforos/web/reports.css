@@ -1,6 +1,7 @@
 .report-intro { margin: 36px 0 22px; }
 .report-intro h1 { font-size: clamp(2rem, 5vw, 3.6rem); margin: 16px 0 6px; }
 .report-intro p { margin-top: 0; }
+.report-stats { grid-template-columns: repeat(auto-fit,minmax(min(100%,190px),1fr)); }
 .report-stats article { min-width: 0; }
 #reportMap svg { display: block; width: 100%; max-height: 490px; border-radius: 12px; background: #f3f8f6; border: 1px solid #d5e1da; }
 .map-grid { stroke: #bbcfc5; stroke-width: .65; }

@@ -99,7 +99,8 @@ function renderRows() {
     } else code.textContent=row.code;
     tr.append(code);
     for(const label of [formatDate(row.date),row.intersection||'Por revisar',row.description||'Por consolidar',
-      [states[row.revision],states[row.processing]].filter(Boolean).join(' · '),row.reports_at_intersection??'—']) {
+      [row.preliminary?'Preliminar · sin revisión humana':states[row.revision],states[row.processing]]
+        .filter(Boolean).join(' · '),row.reports_at_intersection??'—']) {
       tr.append(node('td',label));
     }
     rows.append(tr);
@@ -113,8 +114,11 @@ function renderRows() {
 function render() {
   const stats=byId('reportStats');
   stats.replaceChildren();
-  for(const [label,count] of [['Reportes del corte',view.items.length],['Reportes ubicados',view.map.markers.length],
-    ['Último reporte',formatDate(view.items.reduce((latest,row)=>row.date && (!latest || new Date(row.date)>new Date(latest))?row.date:latest,null))]]) {
+  const latest = view.items.reduce((date,row)=>row.date && (!date || new Date(row.date)>new Date(date))?row.date:date,null);
+  const statsItems = [[team?'Reportes del corte':'Registros del corte',view.items.length],
+    [team?'Reportes ubicados':'Registros ubicados',view.map.markers.length],['Último registro',formatDate(latest)]];
+  if(!team) statsItems.unshift(['Conversaciones incluidas',view.conversations_included??0]);
+  for(const [label,count] of statsItems) {
     const card=node('article');
     card.append(node('span',label),node('strong',count));stats.append(card);
   }
@@ -196,6 +200,7 @@ function logout() {
 }
 byId('audience').textContent=team?'Acceso privado':'Consulta pública';
 byId('reportLogin').hidden=!team;
+byId('preliminaryNote').hidden=team;
 byId('teamLinks').hidden=!team;
 byId('reportRefresh').onclick=load;
 byId('reportSearch').oninput=()=>{page=0;renderRows();};

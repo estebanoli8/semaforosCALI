@@ -22,7 +22,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
       if(path==='/semaforos/datos'){
         assert.equal(request.headers().authorization,undefined);
-        return route.fulfill({json:{cutoff:'2026-11-14T12:00:00Z',items:[],boundary_version:null,
+        return route.fulfill({json:{cutoff:'2026-11-14T12:00:00Z',boundary_version:null,conversations_included:1,
+          items:[{code:'P-SYNTHETIC',date:'2026-11-14T11:00:00Z',intersection:'calle 5 con carrera 70',
+            description:'Falla mencionada',revision:'pendiente',processing:'completado',preliminary:true,
+            reports_at_intersection:1}],
           map:{width:720,height:430,markers:[],polygons:[],grid:[]}}});
       }
       if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
@@ -227,7 +230,9 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/semaforos');
-    await page.getByText('Aún no hay reportes para mostrar con esta selección.').waitFor();
+    await page.getByText('Conversaciones incluidas',{exact:true}).waitFor();
+    await page.getByText('P-SYNTHETIC',{exact:true}).waitFor();
+    await page.getByText(/Preliminar · sin revisión humana/).waitFor();
     assert.equal(await page.locator('#pdfPanel').isVisible(),false);
     assert.deepEqual(errors,[]);
     console.log('Panel: acceso, carga interrumpida/reanudada, agrupación explícita en reporte, móvil y salida OK (API simulada).');
