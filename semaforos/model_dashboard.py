@@ -17,7 +17,8 @@ WITH quality_by_run AS (
                 WHEN j.state='completed' AND r.output->'omitted_assertions' <> '[]'::jsonb THEN 'partial'
                 ELSE j.state END AS state,
            (r.finished_at AT TIME ZONE 'America/Bogota')::date AS finished_day,
-           r.error_code, r.metrics, q.metrics AS quality,
+           r.error_code, r.metrics, q.metrics AS quality, generation.*,
+           (r.output->>'needs_review'='true') AS audio_needs_review,
            CASE j.stage
                WHEN 'text' THEN coalesce(r.model_identity->>'model', j.config->'text'->>'model')
                WHEN 'audio' THEN coalesce(r.model_identity->>'repository', j.config->'audio'->>'repository')
@@ -31,6 +32,21 @@ WITH quality_by_run AS (
         FROM runs WHERE job_id=j.id ORDER BY attempt DESC LIMIT 1
     ) r ON true
     LEFT JOIN quality_by_run q ON q.run_id=r.id AND j.state='completed'
+    LEFT JOIN LATERAL (
+        SELECT sum((timing->>'prompt_eval_count')::bigint) AS input_tokens,
+               sum((timing->>'eval_count')::bigint) AS output_tokens,
+               sum((timing->>'eval_count')::bigint)
+                   FILTER (WHERE (timing->>'eval_duration')::bigint>0) AS timed_tokens,
+               sum((timing->>'eval_duration')::bigint)
+                   FILTER (WHERE (timing->>'eval_duration')::bigint>0
+                           AND timing->>'eval_count' IS NOT NULL) AS generation_ns
+        FROM (
+            SELECT r.output->'ollama_timings' AS timing
+            UNION ALL
+            SELECT part->'ollama_timings'
+            FROM jsonb_array_elements(coalesce(r.output->'recovery'->'batches','[]'::jsonb)) part
+        ) generation_batches
+    ) generation ON j.stage='text' AND j.state='completed'
     WHERE j.stage IN ('audio','detect','text','video')
       AND NOT (j.payload ? 'superseded_by_review')
       AND (%(experiment)s::text IS NULL OR j.experiment_id=%(experiment)s)
@@ -53,6 +69,12 @@ WITH quality_by_run AS (
                FILTER (WHERE state IN ('completed','partial')) AS cpu_seconds_p50,
            percentile_cont(0.9) WITHIN GROUP (ORDER BY (metrics->>'peak_rss_bytes')::double precision)
                FILTER (WHERE state IN ('completed','partial')) AS rss_bytes_p90,
+           count(output_tokens) AS token_samples,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY input_tokens) AS input_tokens_p50,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY output_tokens) AS output_tokens_p50,
+           sum(timed_tokens) * 1000000000.0 / nullif(sum(generation_ns),0) AS tokens_per_second,
+           count(*) FILTER (WHERE state='completed' AND audio_needs_review IS NOT NULL) AS audio_check_samples,
+           count(*) FILTER (WHERE state='completed' AND audio_needs_review) AS audio_needs_review,
            count(*) FILTER (WHERE quality->>'wer' IS NOT NULL OR quality ? 'iou_threshold') AS quality_samples,
            sum((quality->>'word_errors')::bigint)
                FILTER (WHERE quality->>'wer' IS NOT NULL) AS word_errors,

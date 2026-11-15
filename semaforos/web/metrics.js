@@ -116,6 +116,17 @@ function modelCard(stage, row) {
   if (Number.isFinite(data.cpu_seconds_p50)) {
     card.append(element('small', 'CPU del proceso Python · mediana: ' + seconds(data.cpu_seconds_p50)));
   }
+  if (stage === 'text' && data.token_samples) {
+    card.append(element('h3','Generación de texto en Ollama'),
+      values([['Tokens de entrada · mediana',number(data.input_tokens_p50)],
+        ['Tokens de salida · mediana',number(data.output_tokens_p50)],
+        ['Tokens de salida por segundo',number(data.tokens_per_second)]]),
+      element('small',number(data.token_samples) + ' tareas con telemetría de salida. La velocidad usa solo el tiempo de generación.'));
+  }
+  if (stage === 'audio' && data.audio_check_samples) {
+    card.append(element('small',number(data.audio_needs_review) + ' de ' +
+      number(data.audio_check_samples) + ' transcripciones con control automático quedaron señaladas para revisión.'));
+  }
   card.append(quality(stage, data));
   return card;
 }

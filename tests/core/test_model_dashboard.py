@@ -28,7 +28,13 @@ class ModelDashboardTest(unittest.TestCase):
             ('audio', 'completed', 'baseline', {}),
             ('audio', 'completed', 'baseline', {}),
             ('detect', 'completed', 'baseline', {}),
-            ('text', 'completed', 'baseline', {'omitted_assertions': [{'reason':'unbacked_quote'}]}),
+            ('text', 'completed', 'baseline', {
+                'omitted_assertions': [{'reason':'unbacked_quote'}],
+                'recovery': {'batches': [
+                    {'ollama_timings': {'prompt_eval_count':20,'eval_count':4,'eval_duration':2000000000}},
+                    {'ollama_timings': {'prompt_eval_count':30,'eval_count':8,'eval_duration':1000000000}},
+                ]},
+            }),
             ('text', 'failed', 'baseline', {}),
             ('text', 'failed', 'other', {}),
             ('text', 'pending', 'baseline', {}),
@@ -88,6 +94,9 @@ class ModelDashboardTest(unittest.TestCase):
         self.assertEqual(by_stage['detect']['tp'],2)
         self.assertEqual(by_stage['detect']['fn'],3)
         self.assertEqual(by_stage['text']['partial'],1)
+        self.assertEqual(by_stage['text']['input_tokens_p50'],50)
+        self.assertEqual(by_stage['text']['output_tokens_p50'],12)
+        self.assertEqual(by_stage['text']['tokens_per_second'],4)
         self.assertEqual(by_stage['text']['pending'],0)
         self.assertEqual(data['errors'],[{'stage':'text','code':'unbacked_quote','count':1}])
         self.assertEqual(sum(day['results'] for day in data['daily']),4)
