@@ -10,7 +10,7 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Ingesta | Carga reanudable de ZIP de WhatsApp. En una misma selección se sube la versión con el sufijo numérico mayor para cada nombre base. |
 | Procesamiento | Dos carriles, texto y multimedia. Conserva texto literal y originales, enlaza derivaciones y muestra el avance por tarea y conversación. |
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
-| Métricas de modelos | Portal privado disponible en el VPS. Filtra por experimento. El corte final de `detalle-qwen-v3` y su comparación emparejada siguen pendientes. |
+| Métricas de modelos | Portal privado disponible en el VPS. Filtra por experimento. El corte de `detalle-qwen-v3` ya tiene tiempos medidos en el VPS. Queda pendiente la comparación emparejada. |
 | Informe y publicación | PDF general fechado y evidencias protegidas. La ruta pública `/semaforos` ofrece registros preliminares anonimizados y versiones depuradas. La cartografía del panel de Acción Popular queda para una fase posterior. |
 | Acción Popular | Detalle por ciudadano y conversación, PDF enlazado, evaluación humana por modelo y alerta de formato de WhatsApp. Se confirmó el arranque de la tanda en el VPS. |
 | Entregables pendientes | Cartografía en fase posterior, dominio definitivo y correo por reporte en n8n. |
@@ -20,7 +20,7 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 ## Detalle de reporte y piloto Qwen
 
 - El panel privado reúne cada conversación bajo el ciudadano, con tres columnas, estado del análisis y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
-- El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. El tiempo de inferencia y la exactitud se medirán en el VPS con la tanda pendiente. Los conteos cubren entrada, no reintentos.
+- El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. Los resultados de inferencia medidos en el VPS aparecen en el corte del piloto. Los conteos cubren entrada, no reintentos.
 - [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
 
 ## Flujo y modelos
@@ -55,7 +55,9 @@ Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y med
 
 El operador preparó `detalle-qwen-v3` sobre **33 conversaciones con trabajo pendiente y 3 cargas ZIP en trámite**. Se crearon **19 lotes de texto** y se reencolaron **17 tareas**. El primer corte tras el Deploy confirmó `SC_PROCESS=all`, dos trabajadores activos, **15 tareas completadas**, **2 en ejecución** y **74 pendientes**. Había **1 ZIP importado** y **2 en recepción**. La extracción de texto tenía **1 tarea en curso y 37 pendientes** en ese corte.
 
-El corte confirma arranque y avance paralelo. La completitud final por campo, las extracciones compactas finalizadas y la mejora de tiempo requieren un corte posterior. El antecedente del 14 de noviembre y el análisis offline de 22 TXT tienen poblaciones y unidades distintas. Para evaluar velocidad, medir sobre las mismas fuentes con ambos perfiles y registrar la calidad por campo. [Registro y método de validación](docs/detalle_qwen.md#piloto-en-el-vps).
+En el corte posterior finalizaron **34 conversaciones y 94 tareas**. El registro de tareas quedó sin trabajo pendiente, en ejecución ni fallido. Las **2 cargas ZIP que seguían en recepción** requieren terminar la subida. En el detalle se encontraron **Daño en 31 de 34**, **Gestión en 21**, **Peligro en 27** y **Ubicación en 33**. Estas cifras miden cobertura por conversación y campo.
+
+Hubo **39 ejecuciones de texto con `compact-v1`**. La instrumentación de Ollama registró **39 llamadas en 33 conversaciones**, sin truncamientos ni errores, con **56,5 s de mediana** y **122,4 s de p90** de tiempo acumulado por conversación. La aceleración frente al perfil anterior requiere medir las mismas fuentes con la misma unidad. [Registro del corte y método de validación](docs/detalle_qwen.md#piloto-en-el-vps).
 
 ## Uso y verificación
 

@@ -35,6 +35,8 @@ Comparar lotes cerrados. Sumar por conversación la duración de sus llamadas, i
 
 Para medir calidad, usar referencias humanas por los cuatro campos. Registrar verdaderos positivos, falsos positivos y omisiones. Una ausencia revisada y una fuente aún pendiente se codifican por separado. [Consulta y lectura del corte operativo](observabilidad.md#corte-agregado-del-piloto).
 
+El corte del piloto del 15 de noviembre tiene 33 conversaciones con tiempos instrumentados, mediana de 56,5 s y p90 de 122,4 s por conversación. Las duraciones del primer grupo de reintentos se midieron por intento individual y se seleccionaron por fallo previo. Usarlas como contexto de diagnóstico. [Resultados del piloto](detalle_qwen.md#corte-posterior-del-mismo-día).
+
 ## Métricas por modalidad
 
 Audio: WER, errores de ubicación y tiempo relativo de procesamiento. Texto: precisión/cobertura, omisiones y afirmaciones sin respaldo. Visión: precisión y exhaustividad de cajas con IoU definido y coincidencia de conteos revisados. Geografía: ubicación correcta y cobertura. Sistema: tiempo, memoria máxima, CPU, fallos, reintentos y recuperación.
