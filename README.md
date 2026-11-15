@@ -12,10 +12,16 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
 | Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
 | Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` incluye automáticamente los resultados disponibles de conversaciones procesadas como registros preliminares anonimizados. También muestra las versiones depuradas que el equipo haya editado. Despliegue y prueba en el VPS pendientes de confirmación. |
-| Acción Popular | Panel del equipo con una sola sesión, tabla y detalle ligados por evidencia y reproceso selectivo. Pendiente de desplegar y validar con audios en el VPS. |
+| Acción Popular | Detalle por ciudadano y conversación, PDF enlazado, evaluación humana por modelo y alerta de formato de WhatsApp. La medición de la tanda en el VPS queda pendiente. |
 | Entregables pendientes | Cartografía en fase posterior, dominio definitivo y correo por reporte en n8n. |
 
 Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
+
+## Detalle de reporte y piloto Qwen
+
+- El panel privado reúne cada conversación bajo el ciudadano, con tres columnas, estado del análisis y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
+- El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. El tiempo de inferencia y la exactitud se medirán en el VPS con la tanda pendiente. Los conteos cubren entrada, no reintentos.
+- [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md).
 
 ## Flujo y modelos
 
@@ -27,7 +33,7 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 | --- | --- | --- |
 | Whisper Small con faster-whisper | Transcribe notas de voz y audio de video en español. Usa CPU INT8, audio mono a 16 kHz y detección de voz. | Tasa de error de palabras (WER) con transcripciones humanas de referencia. |
 | YOLO11n | Detecta semáforos y dibuja cajas en fotos y fotogramas. La lectura automática de colores quedó retirada. | Precisión y exhaustividad con cajas de referencia e IoU ≥ 0,5. |
-| Qwen3 4B Instruct en Ollama | Extrae ubicación, daño, duración declarada y afectaciones desde el chat y las transcripciones. Cada afirmación se vincula a una cita comprobable. | Tiempos, fallos y tokens por segundo. La exactitud por campo requiere etiquetas humanas. |
+| Qwen3 4B Instruct en Ollama | Extrae daño, desde cuándo, reincidencia tras reparación, gestión, peligro y ubicación del chat y las transcripciones. Cada afirmación se vincula a una cita comprobable. | Tiempos, fallos y tokens por segundo. La exactitud por campo requiere etiquetas humanas. |
 | FFmpeg | Extrae el audio y hasta 15 fotogramas por video según la regla de muestreo aprobada. | Tiempos y fallos de preparación. |
 
 ## Resultados observados en el VPS
@@ -47,7 +53,7 @@ Se relanzaron las 55 extracciones fallidas. En seis reintentos completados y med
 
 ## Uso y verificación
 
-- **Acción Popular.** Entra una vez con la clave del equipo. **Reporte** muestra la situación sintetizada por registro y el botón de PDF del mismo corte. Cada enlace de evidencia abre **Detalle de reporte** en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
+- **Acción Popular.** Entra una vez con la clave del equipo. **Detalle de reporte** muestra las conversaciones y el botón de PDF del mismo corte. Cada enlace de evidencia abre la conversación en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
 - **Reproceso.** Tras desplegar, ejecuta `python -m semaforos.reprocess` para estimar el lote. Prueba con `--conversation UUID --apply` antes de encolar todo con `--apply`. Se reutilizan las detecciones visuales y los artefactos del video. Consulta el [procedimiento de Acción Popular](docs/accion_popular.md).
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
 - La consulta pública genera su corte a partir de lo que ya está guardado. La tabla prioriza cruces identificados e incluye conteos por intersección y por tipo de evidencia. Los indicadores superiores cuentan reportes, fotos, videos, audios y cruces. Los enlaces abren un visor privado compartido por los tipos de evidencia, con lectura del TXT completo, fotos con cajas cuando hay detecciones y audio y video a 1×, 1,5× o 2×. Se ingresa una vez por sesión con la clave del equipo. El mapa aparece debajo de la tabla mientras no tenga puntos. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.

@@ -5,8 +5,10 @@ const team = location.pathname === '/reportes';
 const pageSize = 20;
 const params = new URLSearchParams(location.search);
 const selectedRecord = team ? params.get('registro') : null;
+const selectedConversation = team ? params.get('conversacion') : null;
 const selectedType = params.get('tipo') === 'audio_video' ? 'video' : params.get('tipo');
-const locationEditor = team && params.has('ubicaciones') && !selectedRecord;
+const locationEditor = team && params.has('ubicaciones') && !selectedRecord && !selectedConversation;
+const detailed = team && !locationEditor;
 const evidenceTypes = {
   audio:['audio de WhatsApp','audios de WhatsApp'],
   audio_video:['audio extraído de video','audios extraídos de video'],
@@ -105,13 +107,13 @@ function catalog(row) {
   const details=node('details');
   const total=groups.reduce((sum,[key])=>sum+counts[key],0);
   details.append(node('summary',total+(total===1?' archivo':' archivos')));
-  details.append(node('small',row.evidence_scope==='conversacion'?'De la conversación':'Vinculados al registro'));
+  details.append(node('small',(row.episodes||row.evidence_scope==='conversacion')?'De la conversación':'Vinculados al registro'));
   const list=node('ul');
   for(const [key,labels] of groups) {
     const entry=node('li');
     const count=counts[key];
     const link=node('a',count+' '+labels[count===1?0:1]);
-    link.href='/reportes?'+new URLSearchParams({registro:row.code,tipo:key});
+    link.href='/reportes?'+new URLSearchParams(row.episodes?{conversacion:row.id,tipo:key}:{registro:row.code,tipo:key});
     link.target='_blank';
     link.rel='noopener noreferrer';
     link.title='Abrir detalle en una pestaña nueva';
@@ -121,11 +123,97 @@ function catalog(row) {
   return cell;
 }
 
+const fieldLabels={dano:'Daño',gestion:'Gestión',peligro:'Peligro',ubicacion:'Ubicación'};
+const tagLabels={D:'Tipo de falla',T:'Desde cuándo está dañado',R:'Reincidencia tras reparación',
+  G:'Gestión',P:'Peligro',U:'Ubicación'};
+const sources={chat:'Chat TXT',audio_whatsapp:'Audio de WhatsApp',audio_video:'Audio de video'};
+const localDate = new Intl.DateTimeFormat('es-CO',{month:'long',day:'2-digit',year:'numeric',timeZone:'America/Bogota'});
+function dateLabel(value) {
+  if(!value)return 'Sin fecha disponible';
+  const parts=Object.fromEntries(localDate.formatToParts(new Date(value)).map(p=>[p.type,p.value]));
+  return parts.month+' / '+parts.day+' / '+parts.year;
+}
+function dateRange(from,to) {
+  return from?dateLabel(from)+' – '+dateLabel(to):dateLabel(null);
+}
+function episodeDescription(episodes, state) {
+  const box=node('div');
+  const pending=state==='pending';
+  const missing=pending?'Pendiente de análisis':'No detectado';
+  if(pending || state==='partial')box.append(node('p',pending?'Análisis de fuentes en curso.':
+    'Descripción parcial. Alguna fuente no terminó correctamente.'));
+
+  for(const episode of episodes) {
+    const list=node('dl');
+    list.className='episode-fields';
+    if(episode.location) {
+      const note=episode.location_status?.replaceAll('_',' ');
+      box.append(node('h4',episode.location+(note?' · '+note:'')));
+    }
+    for(const [key,label] of Object.entries(fieldLabels)) {
+      list.append(node('dt',label));
+      const value=node('dd');
+      const hits=episode.fields[key]||[];
+      if(key==='dano') {
+        if(episode.inferred_fault&&!pending&&state!=='partial')value.append(node('p','Semáforo dañado, inferido por el contexto del reporte.'));
+        for(const tag of ['D','T','R']) {
+          const matches=hits.filter(hit=>hit.code===tag);
+          if(!matches.length)value.append(node('p',tagLabels[tag]+' · '+missing));
+          for(const hit of matches) {
+            const metadata=[sources[hit.origin],hit.code==='T'&&hit.date?'Mensaje del '+dateLabel(hit.date):null].filter(Boolean);
+            const line=node('p',tagLabels[tag]+' · '+hit.literal);
+            if(metadata.length)line.append(node('small',' — '+metadata.join(' · ')));
+            value.append(line);
+          }
+        }
+      } else {
+        if(!hits.length)value.append(node('p',missing));
+        for(const hit of hits) {
+          const line=node('p',hit.literal);
+          if(sources[hit.origin])line.append(node('small',' — '+sources[hit.origin]));
+          value.append(line);
+        }
+      }
+      list.append(value);
+    }
+    box.append(list);
+  }
+  return box;
+}
+function renderDetailed(rows,query) {
+  const groups=new Map();
+  for(const row of view.items) {
+    const searchable=[row.reporter,...row.episodes.map(ep=>ep.location)].filter(Boolean).join(' ').toLocaleLowerCase('es-CO');
+    if(!searchable.includes(query))continue;
+    const group=groups.get(row.reporter_key)||[];
+    group.push(row);groups.set(row.reporter_key,group);
+  }
+  const people=[...groups.values()];
+  const end=Math.min(people.length,(page+1)*pageSize);
+  for(const conversations of people.slice(page*pageSize,end)) {
+    const heading=node('tr'), name=node('th',conversations[0].reporter);
+    name.colSpan=3;name.scope='rowgroup';heading.className='citizen-heading';
+    heading.append(name);rows.append(heading);
+    for(const row of conversations) {
+      const tr=node('tr');
+      const description=node('td');description.className='report-description';
+      description.append(episodeDescription(row.episodes,row.analysis_state));
+      tr.append(node('td',dateRange(row.date_from,row.date_to)),description,catalog(row));
+      rows.append(tr);
+    }
+  }
+  byId('reportEmpty').textContent=people.length?'':'Aún no hay conversaciones para mostrar.';
+  byId('reportPageInfo').textContent=people.length?`${page*pageSize+1}–${end} de ${people.length}`:'0';
+  byId('prevReport').disabled=page===0;
+  byId('nextReport').disabled=end>=people.length;
+}
+
 function renderRows() {
   if(!view) return;
   const rows=byId('reportRows');
   rows.replaceChildren();
   const query=byId('reportSearch').value.trim().toLocaleLowerCase('es-CO');
+  if(detailed)return renderDetailed(rows,query);
   const matching=view.items.filter(row=>((team?row.code+' ':'')+(row.intersection||'')).toLocaleLowerCase('es-CO').includes(query));
   const end = Math.min(matching.length,(page+1)*pageSize);
   for(const row of matching.slice(page*pageSize,end)) {
@@ -166,6 +254,13 @@ function renderRows() {
 function render() {
   const stats=byId('reportStats');
   stats.replaceChildren();
+  stats.hidden=detailed;
+  if(detailed) {
+    byId('mapPanel').hidden=true;
+    renderRows();
+    return;
+  }
+
   const latest = view.items.reduce((date,row)=>row.date && (!date || new Date(row.date)>new Date(date))?row.date:date,null);
   const total=view.totals||{};
   const conversations=view.conversations_included??0;
@@ -255,42 +350,50 @@ const variables = {
   ubicacion:'Ubicación', descripcion_dano:'Daño descrito',
   tiempo_sin_funcionar:'Duración mencionada', afectaciones:'Afectaciones'
 };
-function reviewForm(result, frame) {
+function reviewForm(result, mode) {
   const form=node('form');
   form.className='evidence-review';
   const stored=result.review;
   const inputs=[];
-  for(const [name,label] of frame ? [['observed','Observados'],['detected','Detectados']] :
-    [['location','Detectó ubicación']]) {
-    const field=node('input');
-    const wrapper=node('label');
-    field.name=name;
-    field.type=frame?'number':'checkbox';
-    if(frame) {
-      field.min=0;field.max=1000;field.step=1;field.required=true;
-      field.value=stored?.[name]??'';
-      wrapper.append(label,field);
-    } else {
-      field.checked=stored===true;
-      wrapper.append(field,label);
+  const count=mode==='frame_counts';
+  const semantic=mode==='semantic_fields';
+  const fields=semantic?Object.entries(fieldLabels):[[null,null]];
+  for(const [field,label] of fields) {
+    const group=semantic?node('fieldset'):form;
+    if(semantic)group.append(node('legend',label));
+    for(const [name,caption] of (count||semantic)?[['observed','Observado'],['detected','Detectado']]:[['location','Detectó ubicación']]) {
+      const input=node('input'), wrapper=node('label');
+      input.type=count?'number':'checkbox';
+      if(count) {
+        input.min=0;input.max=1000;input.step=1;input.required=true;
+        input.value=stored?.[name]??(name==='detected'?result.automatic_count??'':'');
+        wrapper.append(caption,input);
+      } else {
+        input.checked=semantic?stored?.[field]?.[name]===true:stored===true;
+        wrapper.append(input,caption);
+      }
+      inputs.push({field,name,input});group.append(wrapper);
     }
-    inputs.push(field);
-    form.append(wrapper);
+    if(semantic)form.append(group);
   }
   const save=node('button','Guardar evaluación');
-  save.type='submit';
+  save.type='submit';save.className='secondary';save.classList.toggle('saved',stored!=null);
+  form.addEventListener('input',()=>{save.classList.remove('saved');status.textContent='Cambios pendientes';});
   const status=node('small',stored==null?'Sin evaluación guardada':'Evaluación guardada');
   status.setAttribute('role','status');
   form.append(save,status);
   form.onsubmit=async event=>{
-    event.preventDefault();
-    save.disabled=true;
-    const label=frame?Object.fromEntries(inputs.map(input=>[input.name,input.valueAsNumber])):inputs[0].checked;
+    event.preventDefault();save.disabled=true;
+    let label;
+    if(count)label=Object.fromEntries(inputs.map(({name,input})=>[name,input.valueAsNumber]));
+    else if(semantic) {
+      label={};
+      for(const {field,name,input} of inputs)(label[field] ||= {})[name]=input.checked;
+    } else label=inputs[0].input.checked;
     try {
       await get('/reviews',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({run_id:result.run_id,field:frame?'frame_counts':'location_detected',
-          label,reviewer:byId('evidenceReviewer').value.trim()||'Equipo'})});
-      status.textContent='Evaluación guardada';
+        body:JSON.stringify({run_id:result.run_id,field:mode,label,reviewer:byId('evidenceReviewer').value.trim()||'Equipo'})});
+      save.classList.add('saved');status.textContent='Evaluación guardada';
     } catch(error) {status.textContent=error.message;}
     finally {save.disabled=false;}
   };
@@ -298,37 +401,60 @@ function reviewForm(result, frame) {
 }
 function showModel(card, result, kind) {
   if(!result)return;
-  const title=kind==='chat'?'Interpretación de chat TXT':
+  const title=kind==='extraction'?'Extracción de Qwen':kind==='chat'?'Interpretación de chat TXT':
     kind==='video'?'Transcripción del audio extraído del video':
-    kind==='frame'?'Evaluación del fotograma':'Transcripción del audio de WhatsApp';
+    kind==='frame'?'Evaluación del fotograma':kind==='image'?'Evaluación de la foto':'Transcripción del audio de WhatsApp';
   card.append(node('h5',title));
   if(result.state!=='completed') {
     const status=node('p',(modelStates[result.state]||'Sin salida')+(result.error?' · '+result.error:''));
     status.className='muted';
     card.append(status);
   }
-  if(kind==='chat') {
+  if(kind==='chat'||kind==='extraction') {
     for(const summary of result.summaries||[])card.append(node('p',summary));
     const assertions=node('dl');
     for(const item of result.assertions||[]) {
-      assertions.append(node('dt',variables[item.variable]||item.variable),
+      assertions.append(node('dt',tagLabels[item.field_code]||variables[item.variable]||item.variable),
         node('dd',[item.interpretation,item.literal].filter((value,index,list)=>value && list.indexOf(value)===index).join(' · ')));
     }
     if(assertions.children.length)card.append(assertions);
     if(result.state==='completed'&&!result.summaries?.length&&!result.assertions?.length)
       card.append(node('p','El modelo terminó sin hallazgos.'));
-  } else if(kind==='frame') {
+  } else if(kind==='frame'||kind==='image') {
     if(result.automatic_count!==undefined)card.append(node('small','Cajas del modelo: '+result.automatic_count));
   } else if(result.state==='completed') {
     const transcript=node('p',result.text||'No se detectó habla para transcribir.');
     transcript.className='evidence-transcript';
     card.append(transcript);
   }
-  if(result.run_id)card.append(reviewForm(result,kind==='frame'));
+  if(kind==='frame'||kind==='image') {
+    if(result.run_id)card.append(reviewForm(result,'frame_counts'));
+  } else if(selectedConversation) {
+    if(kind==='chat'||kind==='extraction') {
+      for(const [index,evaluation] of (result.evaluations||[]).entries()) {
+        const block=node('details');
+        block.open=true;
+        block.append(node('summary','Evaluación Qwen'+(result.evaluations.length>1?' · Fragmento '+(index+1):'')));
+        const extracted=node('ul');
+        for(const assertion of evaluation.assertions||[])extracted.append(node('li',
+          (tagLabels[assertion.field_code]||variables[assertion.variable]||assertion.variable)+' · '+assertion.literal));
+        if(extracted.children.length)block.append(extracted);
+        else block.append(node('p','Sin hallazgos en esta ejecución.'));
+        if(result.evaluations.length>1 && evaluation.sources?.length) {
+          const excerpt=node('details');
+          excerpt.append(node('summary','Ver texto de este fragmento'),node('pre',evaluation.sources.map(source=>source.text).join('\n')));
+          block.append(excerpt);
+        }
+        block.append(reviewForm(evaluation,'semantic_fields'));card.append(block);
+      }
+    } else if(result.run_id) {
+      card.append(node('h5','Evaluación Whisper'),reviewForm({...result,review:result.semantic_review},'semantic_fields'));
+    }
+  } else if(result.run_id && kind!=='extraction')card.append(reviewForm(result,'location_detected'));
 }
 function evidenceCard(file) {
   const card=node('article');
-  card.className='evidence-card';
+  card.className='evidence-card'+(file.type==='frame'?' evidence-frame':'');
   const local=['image','video','frame'].includes(file.type);
   card.append(node('h4',local?(file.crossing||'Cruce por identificar'):file.name));
   if(local)card.append(node('small',file.name+(file.time!=null?' · segundo '+file.time:'')));
@@ -349,9 +475,10 @@ function evidenceCard(file) {
     card.append(thumb);
   }
   if(['audio','video'].includes(file.type))card.append(playable(file));
-  if(file.type==='chat')card.append(chatPreview(file,selectedType==='chat'));
-  if(['chat','frame','audio','video'].includes(file.type))
+  if(file.type==='chat')card.append(chatPreview(file,Boolean(selectedConversation)||selectedType==='chat'));
+  if(['chat','frame','image','audio','video'].includes(file.type))
     showModel(card,file.type==='video'?file.transcription:file.analysis,file.type);
+  if(selectedConversation && file.extraction)showModel(card,file.extraction,'extraction');
   const link=node('a','Descargar original');
   link.href=file.download;
   link.download=file.name;
@@ -362,7 +489,11 @@ function renderEvidence(data) {
   byId('evidenceTitle').textContent=data.intersection?'Evidencias · '+data.intersection:'Evidencias del reporte';
   const scope=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
   byId('evidenceScope').textContent=data.date?scope+' · '+formatDate(data.date):scope;
-  byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
+  if(data.episodes) {
+    byId('evidenceTitle').textContent=data.reporter;
+    byId('evidenceScope').textContent=dateRange(data.date_from,data.date_to);
+    byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state));
+  } else byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
   const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
   list.replaceChildren();nav.replaceChildren();
   for(const [type,labels] of Object.entries(evidenceTypes)) {
@@ -415,7 +546,7 @@ function renderEvidence(data) {
 async function loadEvidence(signal) {
   byId('reportStatus').textContent='Consultando evidencias…';
   try {
-    const response=await fetch('/report-media/records/'+encodeURIComponent(selectedRecord),{signal,cache:'no-store'});
+    const response=await fetch((selectedConversation?'/report-media/conversations/':'/report-media/records/')+encodeURIComponent(selectedConversation||selectedRecord),{signal,cache:'no-store'});
     if(response.status===401) {
       byId('evidenceAccess').hidden=true;
       byId('evidenceFiles').replaceChildren();
@@ -435,10 +566,10 @@ async function load() {
   request?.abort();
   const current=new AbortController();
   request=current;
-  if(selectedRecord)return loadEvidence(current.signal);
+  if(selectedRecord||selectedConversation)return loadEvidence(current.signal);
   byId('reportStatus').textContent='Consultando reportes…';
   try {
-    const response=await get(locationEditor?'/report-map':team?'/action-records':'/semaforos/datos',{signal:current.signal});
+    const response=await get(locationEditor?'/report-map':team?'/detailed-records':'/semaforos/datos',{signal:current.signal});
     const data=await response.json();
     if(request!==current)return;
     view=data;page=0;
@@ -446,7 +577,7 @@ async function load() {
     byId('reportWork').hidden=false;
     byId('pdfPanel').hidden=!team;
     byId('reportLogin').hidden=true;
-    byId('reportStatus').textContent=params.has('detalle')
+    byId('reportStatus').textContent=params.has('detalle')&&!detailed
       ?'Selecciona una evidencia del reporte que quieras abrir.'
       :'Corte '+formatDate(view.cutoff)+' · hora de Cali';
   } catch(error) {
@@ -504,7 +635,7 @@ function logout() {
   for(const id of ['reportStats','reportRows','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
   byId('locationForm').reset();
   byId('reportSearch').value='';
-  byId('shareEvidence').checked=false;
+  if(byId('shareEvidence'))byId('shareEvidence').checked=false;
   for(const id of ['reportStatus','mapSelection','editTitle','editStatus'])byId(id).textContent='';
 }
 byId('audience').textContent=team?'Acceso privado':'Consulta pública';
@@ -513,8 +644,18 @@ byId('preliminaryNote').hidden=team;
 byId('recordCodeHeader').hidden=!locationEditor;
 byId('recordStateHeader').hidden=!locationEditor;
 byId('recordEvidenceHeader').hidden=locationEditor;
-byId('crossingCountNote').hidden=locationEditor;
-if(!locationEditor) {
+byId('crossingCountNote').hidden=locationEditor||detailed;
+byId('recordCrossingHeader').hidden=detailed;
+byId('recordCrossingCountHeader').hidden=detailed;
+if(detailed) {
+  byId('recordDateHeader').textContent='Fecha';
+  byId('reportSearch').labels[0].textContent='Buscar por ciudadano o ubicación';
+  byId('reportSearch').placeholder='Nombre, celular, dirección o referencia';
+  byId('shareEvidence').checked=true;
+  byId('shareEvidence').parentElement.replaceChildren(document.createTextNode('El PDF contiene enlaces directos válidos durante 7 días. Quien reciba el enlace podrá abrir la evidencia.'));
+}
+
+if(!locationEditor&&!detailed) {
   byId('reportIntro').textContent='Consulta los cruces y las evidencias disponibles en los reportes ciudadanos.';
   byId('reportSearch').labels[0].textContent='Buscar por cruce';
   byId('reportSearch').placeholder='Calle o carrera';
@@ -563,7 +704,7 @@ byId('exportPdf').onclick=async()=>{
   byId('reportStatus').textContent='Generando informe…';
   try {
     const response=await get('/report-exports',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({share_evidence:byId('shareEvidence').checked,action_report:!locationEditor})});
+      body:JSON.stringify({share_evidence:detailed||byId('shareEvidence')?.checked,detailed_report:detailed,action_report:!locationEditor})});
     const ident=response.headers.get('X-Report-Export-ID');
     download(await response.blob(),'semaforos-cali-'+ident+'.pdf');
     byId('reportStatus').textContent='Informe generado · '+ident;

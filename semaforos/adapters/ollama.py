@@ -52,9 +52,14 @@ def chat(config, messages, on_partial=None, format_schema=None):
         'format':format_schema or 'json','keep_alive':config.get('keep_alive',0),
         'options':{'temperature':0,'num_ctx':config['context'],'num_predict':config['max_tokens'],'num_thread':config['threads']}}
     result=stream_chat(payload,on_partial) if on_partial else request('/api/chat',payload)
-    if result.get('done_reason')=='length':raise ValueError('truncated_model_output')
+    timing={k:result.get(k) for k in ('total_duration','load_duration','prompt_eval_count',
+                                       'prompt_eval_duration','eval_count','eval_duration')}
+    if result.get('done_reason')=='length':
+        error=ValueError('truncated_model_output')
+        error.ollama_timing=timing
+        raise error
     if not result.get('done',False):raise ValueError('incomplete_model_output')
     # Evitar aceptar una respuesta si cambiaron el tag durante la inferencia.
     if identity(config)['digest']!=model_id['digest']:raise ValueError('model_changed_during_run')
     content=json.loads(result['message']['content'])
-    return content, model_id, {k:result.get(k) for k in ('total_duration','load_duration','prompt_eval_count','prompt_eval_duration','eval_count','eval_duration')}
+    return content, model_id, timing

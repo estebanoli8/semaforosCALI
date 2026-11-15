@@ -1,5 +1,7 @@
 # Acción Popular · revisión y reproceso
 
+La operación actualizada del panel unificado y la migración de la cola se documentan en [Detalle y Qwen](detalle_qwen.md). Este procedimiento describe el reproceso selectivo previo de audio y chat.
+
 El panel privado reúne Reporte, Desempeño de modelos, Detalle de reporte y Cargue de ZIP. La clave abre una sesión HTTPS de cuatro horas compartida en el mismo navegador. Los enlaces de evidencia abren otra pestaña. Los enlaces de descarga temporales del PDF se generan solo si el equipo marca esa opción.
 
 ## Interpretación y revisión

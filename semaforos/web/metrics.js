@@ -214,6 +214,63 @@ function latencyChart(byStage) {
   }
   return section;
 }
+function reviewedModels(data) {
+  const panel=element('section');
+  panel.className='metrics-section';
+  panel.append(element('h2','Evaluación humana por modelo'));
+  const quality=data.human_evaluations||{};
+  const vision=quality.detect;
+  if(vision)panel.append(values([
+    ['YOLO · imágenes con conteo exacto',percent(vision.exact_rate)],
+    ['Imágenes evaluadas',number(vision.samples)],
+    ['Semáforos observados',number(vision.observed)],
+    ['Semáforos detectados',number(vision.detected)]
+  ]));
+  const labels={dano:'Daño',gestion:'Gestión',peligro:'Peligro',ubicacion:'Ubicación'};
+  for(const [stage,model] of [['audio','Whisper'],['text','Qwen']]) {
+    const row=quality[stage];
+    if(!row)continue;
+    panel.append(element('h3',model+' · F1 de los campos '+percent(row.macro_f1)));
+    panel.append(dataTable(['Campo','Observados','Detectados','Coincidencias positivas','Evaluaciones','F1'],
+      Object.entries(row.fields).map(([key,value])=>[labels[key],number(value.tp+value.fn),
+        number(value.tp+value.fp),number(value.tp),number(value.samples),percent(value.f1)])));
+  }
+  panel.append(element('p','Se cuenta la última etiqueta guardada de cada ejecución. Un campo sin positivos observados ni detectados queda fuera del promedio F1.'));
+  return panel;
+}
+function extractionTelemetry(data) {
+  const panel=element('section');
+  panel.className='metrics-section';
+  panel.append(element('h2','Inferencia de Qwen'));
+  const row=data.qwen_calls||{};
+  if(row.conversations)panel.append(values([
+    ['Conversaciones con telemetría',number(row.conversations)],
+    ['Llamadas',number(row.calls)], ['Truncadas',number(row.truncated)], ['Con error',number(row.errors)],
+    ['Llamadas por conversación · mediana',number(row.calls_p50)],
+    ['Tokens de entrada por conversación · mediana',number(row.input_tokens_p50)],
+    ['Tokens de salida por conversación · mediana',number(row.output_tokens_p50)],
+    ['Tiempo de llamadas por conversación · p50',seconds(row.total_seconds_p50)],
+    ['Tiempo de llamadas por conversación · p90',seconds(row.total_seconds_p90)]
+  ]));
+  else panel.append(element('p','Aún no hay inferencias con telemetría por llamada en este corte.'));
+  return panel;
+}
+function formatAlerts(data) {
+  const panel=element('section');
+  panel.className='metrics-section';
+  panel.append(element('h2','Alertas del formato de WhatsApp'));
+  const rows=data.chat_format_alerts||[];
+  if(!rows.length)panel.append(element('p','Sin alertas registradas en los TXT revisados.'));
+  else panel.append(dataTable(['TXT y conversación','Parser','Estado','Cabeceras reconocidas','Causas'],
+    rows.map(row=>[row.original_name+' · '+row.conversation_name,row.parser_version,
+      row.format_health.severity==='degraded'?'Degradado':'Aviso',
+      number(row.format_health.recognized_headers)+' de '+number(row.format_health.probable_headers),
+      row.format_health.reasons.map(reason=>({unknown_headers:'Cabecera nueva',unknown_attachments:'Adjunto con estructura nueva',
+        invalid_timestamps:'Fecha u hora no interpretable',no_recognized_header:'Sin cabecera reconocida',
+        unknown_sender_shape:'Separador de remitente nuevo'})[reason]||reason).join(', ')])));
+  panel.append(element('p','La alerta mide cambios de estructura en la entrada. Los TXT históricos aparecen a medida que se vuelven a inspeccionar.'));
+  return panel;
+}
 function render(data) {
   const grid = element('div');
   grid.className = 'metrics-grid';
@@ -241,7 +298,7 @@ function render(data) {
   } else {
     failures.append(element('p','No se registran fallos en este filtro.'));
   }
-  get('metricsContent').replaceChildren(grid,latencyChart(byStage),chart,failures);
+  get('metricsContent').replaceChildren(grid,reviewedModels(data),extractionTelemetry(data),formatAlerts(data),latencyChart(byStage),chart,failures);
   const timestamp = new Date(data.as_of).toLocaleString('es-CO',{timeZone:'America/Bogota'});
   get('metricsCut').textContent = 'Corte: ' + timestamp + ' (Colombia). Se toma el último intento por tarea. '
     + 'CPU y memoria miden el proceso Python. El consumo de Ollama y FFmpeg como procesos separados queda fuera.';

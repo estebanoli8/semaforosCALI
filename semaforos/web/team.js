@@ -36,12 +36,9 @@ if (location.pathname !== '/semaforos') {
   brand.append(name,picture);
   const navigation=document.createElement('nav');
   navigation.setAttribute('aria-label','Panel del equipo');
-  const detail=location.pathname==='/reportes' &&
-    (new URLSearchParams(location.search).has('registro') || new URLSearchParams(location.search).has('detalle'));
   for (const [label,href,active] of [
-    ['Reporte','/reportes',location.pathname==='/reportes' && !detail],
+    ['Detalle de reporte','/reportes',location.pathname==='/reportes'],
     ['Desempeño de modelos','/metricas',location.pathname==='/metricas'],
-    ['Detalle de reporte','/reportes?detalle=1',detail],
     ['Cargue de ZIP','/',location.pathname==='/']
   ]) {
     const link=document.createElement('a');

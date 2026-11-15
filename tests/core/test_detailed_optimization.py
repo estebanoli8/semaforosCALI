@@ -1,0 +1,60 @@
+import unittest
+from unittest.mock import patch
+
+from semaforos.adapters.compact_text import extract_compact
+from semaforos.detailed import compose
+from semaforos.quality_metrics import summarize_reviews
+from semaforos.whatsapp import compact_sources, format_health, parse_chat
+
+
+class DetailedOptimizationTests(unittest.TestCase):
+    def test_alerts_preserve_unknown_header_with_no_inherited_sender(self):
+        text='[15/11/26, 10:00] Equipo: Hola\n15/11/26 10.05 | Persona | Falla desde ayer\nContinuación.'
+        parsed=parse_chat(text)
+        self.assertEqual(parsed[1]['kind'],'unparsed')
+        self.assertIsNone(parsed[1]['sender_visible'])
+        status=format_health(text,parsed)
+        self.assertEqual(status['severity'],'degraded')
+        self.assertEqual(status['probable_headers'],2)
+        self.assertEqual(status['unreadable_fraction'],.5)
+        alternative='15/11/26 10:05 - Persona: Una referencia\nSegunda línea.'
+        self.assertEqual(format_health(alternative,parse_chat(alternative))['severity'],'ok')
+
+    def test_compact_input_preserves_literal_offsets_with_partial_attachment(self):
+        text=('[15/11/26, 10:00] Ciudadana: Messages and calls are end-to-end encrypted. '
+              'Only people in this chat can read, listen to, or share them.\r\n'
+              '[15/11/26, 10:02] Ciudadana: Desde ayer <attached: test.mp4> sigue dañado.\r\n')
+        rows=[dict(row,id=str(i),evidence_id='synthetic') for i,row in enumerate(parse_chat(text))]
+        chunks=list(compact_sources(rows))
+        self.assertEqual([[s['text'] for s in batch] for batch in chunks],[['Desde ayer','sigue dañado.']])
+        for source in chunks[0]:
+            self.assertEqual(text[source['char_start']:source['char_start']+len(source['text'])],source['text'])
+
+    def test_model_and_projection_keep_recurrence_under_damage_and_merge_sources(self):
+        sources=[{'id':'a','text':'Calle 16 con carrera 84.','origin':'chat'},
+                 {'id':'b','text':'Lo arreglaron, volvió a fallar. Desde hace dos días está dañado.','origin':'chat'}]
+        prediction={'hits':[{'k':'U','s':'S1','u':'S1'},{'k':'R','s':'S2','u':'S1'},{'k':'T','s':'S3','u':'S1'}]}
+        with patch('semaforos.adapters.compact_text.chat',return_value=(prediction,{'digest':'x'},{'eval_count':15})) as request:
+            output,_=extract_compact(sources,{'threads':4,'chat_threads':6})
+        self.assertEqual(request.call_args.args[0]['threads'],6)
+        self.assertEqual(output['ollama_calls'][0]['eval_count'],15)
+        audio={'id':'v','origin':'audio_video','text':'Un motociclista casi choca en calle 16 con carrera 84.'}
+        video_out={'extraction':{'assertions':[{'source_id':'v','variable':'afectaciones','field_code':'P','literal':audio['text']}]}}
+        combined=compose([{'job_id':'a','evidence_id':'a','payload':{'sources':sources},'output':output},
+                          {'job_id':'b','evidence_id':'v','payload':{'sources':[audio]},'output':video_out}])
+        self.assertEqual(len(combined),1)
+        self.assertEqual({x['code'] for x in combined[0]['fields']['dano']},{'R','T'})
+        self.assertEqual(combined[0]['fields']['gestion'],[])
+        self.assertEqual(combined[0]['fields']['peligro'][0]['origin'],'audio_video')
+
+    def test_inferred_fault_is_explicit_and_field_scores_only_use_saved_labels(self):
+        source={'id':'a','text':'5 x 5','origin':'chat'}
+        episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},'output':{'assertions':[]}}])
+        self.assertTrue(episodes[0]['inferred_fault'])
+        self.assertEqual(episodes[0]['fields']['dano'],[])
+        metrics=summarize_reviews([{'stage':'text','human_label':{'gestion':{'observed':True,'detected':False}}},
+                                   {'stage':'detect','human_label':{'observed':0,'detected':0}}])
+        self.assertEqual(metrics['text']['macro_f1'],0)
+        self.assertEqual(metrics['text']['fields']['dano']['samples'],0)
+        self.assertIsNone(metrics['audio']['macro_f1'])
+        self.assertEqual(metrics['detect']['exact_rate'],1)

@@ -28,7 +28,7 @@
   <section id="evidenceAccess" hidden>
     <div class="sectionTitle"><h2 id="evidenceTitle">Evidencias</h2><button class="secondary" id="evidenceLogout">Salir</button></div>
     <p id="evidenceScope" class="muted"></p>
-    <h3>Situación presentada</h3><p id="evidenceSituation"></p>
+    <h3>Descripción</h3><div id="evidenceSituation"></div>
     <label for="evidenceReviewer">Quién revisa</label><input id="evidenceReviewer" maxlength="100" placeholder="Equipo">
     <nav id="evidenceTypes" class="inline evidence-types" aria-label="Tipos de evidencia"></nav>
     <div id="evidenceFiles"></div>
@@ -47,8 +47,8 @@
       <p id="crossingCountNote" class="muted" hidden><strong>Registros en este cruce</strong> cuenta las filas asociadas a la misma intersección, incluida la que estás consultando. Los relatos de distintos ciudadanos cuentan por separado. El guion indica que falta identificar el cruce.</p>
       <label for="reportSearch">Buscar por código o cruce</label><input type="search" id="reportSearch" placeholder="Calle, carrera o R-000001">
       <div class="tableScroll"><table>
-        <thead><tr><th id="recordCodeHeader">Reporte</th><th>Fecha del mensaje</th><th>Cruce</th><th>Descripción</th>
-          <th id="recordStateHeader">Estado</th><th>Registros en este cruce</th><th id="recordEvidenceHeader">Evidencias</th></tr></thead>
+        <thead><tr><th id="recordCodeHeader">Reporte</th><th id="recordDateHeader">Fecha del mensaje</th><th id="recordCrossingHeader">Cruce</th><th>Descripción</th>
+          <th id="recordStateHeader">Estado</th><th id="recordCrossingCountHeader">Registros en este cruce</th><th id="recordEvidenceHeader">Evidencias</th></tr></thead>
         <tbody id="reportRows"></tbody>
       </table></div>
       <p id="reportEmpty" class="muted"></p>

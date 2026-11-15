@@ -117,6 +117,16 @@ def create_media_router(store, root, key, team_auth):
         response.delete_cookie(COOKIE,path='/',httponly=True,secure=True,samesite='strict')
         return response
 
+    def signed_inventory(result,identity):
+        for item in result['items']:
+            proof=token_for_file(key,identity,item['id'])
+            base=f'{PREFIX}/files/{item["id"]}'
+            item['content']=f'{base}/content?firma={proof}'
+            item['download']=f'{base}/download?firma={proof}'
+            if item['type'] in ('image','frame'):
+                item['thumbnail']=f'{base}/thumbnail?firma={proof}'
+        return result
+
     @router.get('/records/{code}')
     def inventory(code: str,identity: str=Depends(media_auth)):
         try:
@@ -126,14 +136,15 @@ def create_media_router(store, root, key, team_auth):
                 result=snapshot(store,root,public=True,evidence_code=code)
             except ReportError as exc:
                 raise HTTPException(404,'Registro no disponible') from exc
-        for item in result['items']:
-            proof=token_for_file(key,identity,item['id'])
-            base=f'{PREFIX}/files/{item["id"]}'
-            item['content']=f'{base}/content?firma={proof}'
-            item['download']=f'{base}/download?firma={proof}'
-            if item['type'] in ('image','frame'):
-                item['thumbnail']=f'{base}/thumbnail?firma={proof}'
-        return result
+        return signed_inventory(result,identity)
+
+    @router.get('/conversations/{ident}')
+    def citizen_inventory(ident: UUID,identity: str=Depends(media_auth)):
+        from .detailed import conversation_evidence
+        try:
+            return signed_inventory(conversation_evidence(store,ident),identity)
+        except ReportError as exc:
+            raise HTTPException(404,'Conversación no disponible') from exc
 
     @router.get('/files/{ident}/{kind}')
     def file(ident: UUID,kind: Literal['content','thumbnail','download'],

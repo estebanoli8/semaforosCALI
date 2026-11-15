@@ -14,12 +14,18 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const uploadedNames=[];
     let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false,mediaSession=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
+    const citizen={id:'conversation-synthetic',reporter:'Ciudadana sintética',reporter_key:'citizen',
+      date_from:'2026-11-03T15:00:00Z',date_to:'2026-11-14T15:00:00Z',
+      episodes:[{location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
+        fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]}}],
+      evidence_counts:{chat:1}};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
     await page.context().route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
       if(['/reportes','/semaforos'].includes(path))return route.fulfill({
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
+      if(path==='/metricas')return route.fulfill({contentType:'text/html',body:readFileSync('semaforos/web/metrics.html')});
       if(path==='/marca-esteban.png')return route.fulfill({contentType:'image/png',body:readFileSync('semaforos/assets/logo-esteban.png')});
       if(path==='/semaforos/datos'){
         assert.equal(request.headers().authorization,undefined);
@@ -41,14 +47,15 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       if(path==='/team-session')return route.fulfill({status:mediaSession?200:401,json:{active:mediaSession}});
       if(path.startsWith('/report-media/')) {
         if(!mediaSession) return route.fulfill({status:401});
-        if(path==='/report-media/records/P-SYNTHETIC'){
+        if(['/report-media/records/P-SYNTHETIC','/report-media/conversations/conversation-synthetic'].includes(path)){
           return route.fulfill({json:{scope:'registro',intersection:'Calle 5 con Carrera 70',
             situacion_presentada:'Se reporta una falla.',
+            ...(path.includes('/conversations/')?citizen:{}),
             items:[['text','chat','chat-sintético.txt'],['image','image','foto-sintética.jpg'],
               ['audio','audio','voz-sintética.ogg'],['video','video','video-sintético.mp4']]
               .map(([id,type,name])=>({id,type,name,content:'/report-media/files/'+id+'/content',
                 download:'/report-media/files/'+id+'/download',thumbnail:type==='image'?'/marca-esteban.png':undefined,
-                analysis:type==='chat'?{state:'completed',summaries:['Se identificó un cruce'],run_id:'run-synthetic'}:
+                analysis:type==='chat'?{state:'completed',summaries:['Se identificó un cruce'],run_id:'run-synthetic',evaluations:[{run_id:'run-synthetic'}]}:
                   type==='audio'?{state:'failed',error:'adapter_failed'}:undefined,
                 transcription:type==='video'?{state:'completed',text:'Transcripción sintética del video'}:undefined}))}});
         }
@@ -70,13 +77,18 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
       }
+      else if(path==='/detailed-records'){
+        result={cutoff:'2026-11-14T12:00:00Z',items:[citizen]};
+      }
       else if(path==='/action-records'){
         result={cutoff:'2026-11-14T12:00:00Z',map:null,conversations_included:1,totals:{records:1,crossings:1},
           items:[{code:'P-SYNTHETIC',date:'2026-11-14T11:00:00Z',intersection:'calle 5 con carrera 70',
             description:'Se reporta una falla.',reports_at_intersection:1,evidence_scope:'registro',evidence_counts:{chat:1}}]};
       }
       else if(path==='/reviews'&&request.method()==='POST'){
-        const body=request.postDataJSON();assert.equal(body.field,'location_detected');assert.equal(body.label,false);
+        const body=request.postDataJSON();
+        if(body.field==='semantic_fields')assert.deepEqual(body.label.dano,{observed:true,detected:false});
+        else {assert.equal(body.field,'location_detected');assert.equal(body.label,false);}
         result={id:'review-synthetic'};
       }
       else if(path==='/report-map'){
@@ -235,10 +247,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage)),[]);
     await page.locator('#logout').click();
     await page.locator('#login').waitFor({state:'visible'});
-    await page.goto('http://127.0.0.1:8765/metrics.html');
+    await page.goto('http://127.0.0.1:8765/metricas');
     assert.equal(await page.locator('#metricsWorkspace').isVisible(),false);
-    await page.getByLabel('Clave de acceso del equipo').fill('x'.repeat(32));
-    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.locator('#metricsToken').fill('x'.repeat(32));
+    await page.locator('#metricsToken').press('Enter');
     await page.getByText('WER · tasa de error de palabras').waitFor();
     assert.match(await page.locator('#metricsContent').textContent(),/25 %/);
     assert.equal(await page.locator('#metricsContent').getByRole('img').count(),2);
@@ -268,7 +280,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/reportes');
-    await page.getByText('Se reporta una falla.',{exact:true}).waitFor();
+    await page.getByText('Desde cuándo está dañado · Desde hace 12 días',{exact:false}).waitFor();
+    await page.getByText('noviembre / 03 / 2026 – noviembre / 14 / 2026').waitFor();
+    assert.equal(await page.locator('#recordsPanel thead th:visible').count(),3);
+    assert.equal(await page.getByRole('link',{name:'Reporte',exact:true}).count(),0);
     assert.equal(await page.locator('#mapPanel').isVisible(),false);
     assert.equal(await page.locator('#reportLogin').isVisible(),false);
     await page.getByText('1 archivo',{exact:true}).click();
@@ -278,8 +293,12 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await detail.getByText('Se identificó un cruce',{exact:true}).waitFor();
     await detail.getByText('Transcripción sintética del video',{exact:true}).waitFor();
     assert.equal(await detail.locator('#reportLogin').isVisible(),false);
-    await detail.getByRole('button',{name:'Guardar evaluación',exact:true}).click();
+    const form=detail.locator('#files-chat .evidence-review');
+    await form.locator('fieldset').first().getByRole('checkbox',{name:'Observado',exact:true}).check();
+    const save=form.getByRole('button',{name:'Guardar evaluación',exact:true});
+    await save.click();
     await detail.getByText('Evaluación guardada',{exact:true}).waitFor();
+    assert.equal(await save.evaluate(button=>button.classList.contains('saved')),true);
     assert.equal(new URL(page.url()).pathname,'/reportes');
     await detail.close();
     await page.goto('http://127.0.0.1:8765/semaforos');

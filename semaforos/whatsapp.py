@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-PARSER_VERSION = 'whatsapp-1'
+PARSER_VERSION = 'whatsapp-2'
 DEFAULT_OPTIONS = {'date_order': 'DMY', 'timezone': 'America/Bogota', 'two_digit_century': 2000}
 MARKS = '\ufeff\u200e\u200f\u202a\u202b\u202c\u2066\u2067\u2068\u2069'
 PREFIX = '[' + MARKS + ']*'
@@ -65,7 +65,8 @@ def parse_chat(text, config=None):
     cursor = 0
     for line in text.splitlines(keepends=True):
         match = HEADER.match(line.rstrip('\r\n'))
-        if match: boundaries.append((cursor, match))
+        if match or HEADER_CANDIDATE.match(line.lstrip(MARKS+' ')):
+            boundaries.append((cursor, match))
         cursor += len(line)
     if not boundaries or boundaries[0][0] > 0: boundaries.insert(0, (0, None))
     records = []
@@ -92,7 +93,7 @@ def parse_chat(text, config=None):
                 item['kind'] = 'message'
             else:
                 item['body_text'] = raw[match.start('payload'):]
-                item['kind'] = 'system'
+                item['kind'] = 'unparsed' if unknown_sender(payload) else 'system'
         item['attachment_names'] = list(dict.fromkeys(
             [m.group(1).strip(MARKS+' \t') for m in ATTACHED.finditer(item['body_text'])] +
             [m.group(1).strip(MARKS+' \t') for m in NAMED_ATTACHMENT.finditer(item['body_text'])]))
@@ -116,3 +117,111 @@ def message_chunks(records):
                 yield batch; batch = []
             batch.append(source)
     if batch: yield batch
+
+
+# A likely new header starts with a date and a clock. Plain continuation lines,
+# coordinates, and dates mentioned in prose are outside this denominator.
+HEADER_CANDIDATE = re.compile(r"^[\[\(]?(?:\d{1,4}[/.–-]\d{1,2}[/.–-]\d{1,4})"
+                              r"[ T,\]]{1,5}\d{1,2}[:.]\d{2}")
+ATTACHMENT_CANDIDATE = re.compile(r"(?:<[^<>]{0,15}:?\s*)?[^\n<>]{0,200}\.(?:opus|ogg|mp4|jpe?g|png)\b", re.I)
+OBSOLETE_MEDIA = re.compile(r"^<?(?:media omitted|image omitted|video omitted|audio omitted|sticker omitted|"
+                            r"multimedia omitid[oa]|imagen omitida|video omitido|audio omitido|sticker omitido)>?\.?$",re.I)
+BANNERS = (
+    'messages and calls are end-to-end encrypted. only people in this chat can read, listen to, or share them.',
+    'los mensajes y las llamadas están cifrados de extremo a extremo. solo las personas en este chat pueden leerlos, escucharlos o compartirlos.',
+    'los mensajes y las llamadas están cifrados de extremo a extremo. nadie fuera de este chat, ni siquiera whatsapp, puede leerlos ni escucharlos.',
+)
+
+
+def unknown_sender(payload):
+    return bool(': ' not in payload and re.match(r'^[^|—]{1,80}\s+(?:\||—|→)\s+\S',payload))
+
+
+def format_health(text, records):
+    counts={'ios':0,'android':0,'unknown_headers':0,'unknown_attachments':0,'invalid_timestamps':0,'unknown_sender_shape':0}
+    for line in text.splitlines():
+        match=HEADER.match(line)
+        if match:
+            counts['ios' if match['ios_date'] else 'android']+=1
+            payload=match['payload']
+            if unknown_sender(payload):
+                counts['unknown_sender_shape']+=1
+        elif HEADER_CANDIDATE.match(line.lstrip(MARKS+' ')):
+            counts['unknown_headers']+=1
+    for record in records:
+        if record['timestamp_status'] in ('invalid_datetime','ambiguous_date'):
+            counts['invalid_timestamps']+=1
+        for line in record['body_text'].splitlines():
+            line=line.strip(MARKS+' \t')
+            if (line.startswith('<') or line.endswith(')')) and ATTACHMENT_CANDIDATE.search(line):
+                if not (ATTACHED.search(line) or NAMED_ATTACHMENT.search(line)):
+                    counts['unknown_attachments']+=1
+    recognized=counts['ios']+counts['android']
+    probable=recognized+counts['unknown_headers']
+    missing=counts['unknown_headers']+counts['invalid_timestamps']
+    fraction=missing/probable if probable else None
+    reasons=[key for key in ('unknown_headers','unknown_attachments','invalid_timestamps','unknown_sender_shape') if counts[key]]
+    if not recognized and text.strip(MARKS+' \t\r\n'):
+        reasons.append('no_recognized_header')
+    severity='degraded' if 'no_recognized_header' in reasons or (fraction is not None and fraction>.10) else (
+        'warning' if reasons else 'ok')
+    return {**counts,'probable_headers':probable,'recognized_headers':recognized,'unreadable_fraction':fraction,
+            'severity':severity,'reasons':reasons,'monitor_version':'chat-format-1'}
+
+
+def useful_segments(body):
+    # Keep exact source offsets across excluded attachment markers or banner lines.
+    blocked=sorted([(m.start(),m.end()) for regex in (ATTACHED,NAMED_ATTACHMENT) for m in regex.finditer(body)])
+    start=0
+    for a,b in blocked+[(len(body),len(body))]:
+        chunk=body[start:a]
+        cursor=start
+        for line in chunk.splitlines(keepends=True):
+            normalized=' '.join(line.strip(MARKS+' \t\r\n').casefold().split())
+            if normalized in BANNERS or OBSOLETE_MEDIA.fullmatch(normalized):
+                if cursor>start:
+                    yield start,body[start:cursor]
+                start=cursor+len(line)
+            cursor+=len(line)
+        if a>start:
+            yield start,body[start:a]
+        start=max(start,b)
+
+
+def compact_sources(records):
+    """Batch contiguous messages with an identical author, keeping exact offsets."""
+    batch=[]; size=0; prior_sender=None; prior_time=None; episode=0
+    for record in records:
+        if record['kind']=='system':
+            continue
+        body=record['body_text']
+        raw=record['raw_text']
+        offset=record['char_start']+len(raw)-len(body)
+        sender=record['sender_visible']
+        time=record['sent_at']
+        if isinstance(time,str):
+            time=datetime.fromisoformat(time)
+        if sender!=prior_sender or (time and prior_time and abs((time-prior_time).total_seconds())>1800):
+            episode+=1
+            prior_time=None
+        for start,segment in useful_segments(body):
+            for pos in range(0,len(segment),1700):
+                raw_part=segment[pos:pos+1700]
+                part=raw_part.strip(MARKS+' \t\r\n')
+                if not part:
+                    continue
+                begin=offset+start+pos+len(raw_part)-len(raw_part.lstrip(MARKS+' \t\r\n'))
+                if batch and (size+len(part)>2100 or len(batch)>=25):
+                    yield batch
+                    batch=[];size=0
+                batch.append({'id':f"{record['id']}:{begin-record['char_start']}",
+                              'message_id':str(record['id']),'source_id':str(record['evidence_id']),
+                              'origin':'chat','text':part,'char_start':begin,'episode':episode,
+                              'sent_at':time.isoformat() if time else None,
+                              'timestamp_status':record['timestamp_status'],'timezone_assumed':record['timezone_assumed']})
+                size+=len(part)
+        prior_sender=sender
+        if time:
+            prior_time=time
+    if batch:
+        yield batch

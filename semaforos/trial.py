@@ -44,7 +44,7 @@ def run_trial(store, root, config, stage, experiment, runner=None):
                         'status':'completed','seconds':output['metrics'].get('wall_seconds')}
             except Exception as exc:
                 code=getattr(exc,'error_code',type(exc).__name__)
-                store.fail(c,job,code)
+                store.fail(c,job,code,getattr(exc,'ollama_calls',None))
                 return {'job_id':str(ident),'run_id':str(job['run_id']),'stage':stage,
                         'status':'failed','error_code':code}
         finally:

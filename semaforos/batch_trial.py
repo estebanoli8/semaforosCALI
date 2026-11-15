@@ -64,7 +64,7 @@ def run_upload(store, root, upload_id, max_jobs=500):
                     store.complete(lock,job,output);print('  ✅ Completado',flush=True)
                 except Exception as exc:
                     code=getattr(exc,'error_code',type(exc).__name__)
-                    store.fail(lock,job,code);print(f'  ❌ {code}',flush=True)
+                    store.fail(lock,job,code,getattr(exc,'ollama_calls',None));print(f'  ❌ {code}',flush=True)
             expand(store,root,conversation_id);index_pending(store,conversation_id)
             final=counts(store,conversation_id)
             status='limit_reached' if final.get('pending',0) or final.get('running',0) else 'finished'

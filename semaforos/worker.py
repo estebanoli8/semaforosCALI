@@ -10,8 +10,9 @@ from .store import LOCK_KEY, Store
 
 
 class AdapterFailure(Exception):
-    def __init__(self, code):
+    def __init__(self, code, calls=None):
         self.error_code=code if isinstance(code,str) and code.isidentifier() and len(code)<=100 else 'adapter_failed'
+        self.ollama_calls=calls or []
         super().__init__(self.error_code)
 
 
@@ -97,7 +98,7 @@ def once(store, root, runner=None):
                 output=(runner or execute_child)(store,c,job,root)
                 store.complete(c,job,output)
             except Exception as exc:
-                store.fail(c,job,getattr(exc,'error_code',type(exc).__name__))
+                store.fail(c,job,getattr(exc,'error_code',type(exc).__name__),getattr(exc,'ollama_calls',None))
             expand(store,root)
             index_pending(store)
             return True
@@ -149,9 +150,9 @@ def execute_child(store,c,job,root,progress_reporter=None):
                 try:process.wait(timeout=5)
                 except subprocess.TimeoutExpired:pass
             if process.returncode:
-                try:code=json.loads(result_file.read_text()).get('error_code')
-                except (OSError,ValueError,AttributeError):code='adapter_failed'
-                raise AdapterFailure(code)
+                try:failure=json.loads(result_file.read_text())
+                except (OSError,ValueError):failure={}
+                raise AdapterFailure(failure.get('error_code','adapter_failed'),failure.get('ollama_calls'))
             output=json.loads(result_file.read_text())
             if set(('result','metrics','model_identity'))-output.keys():raise ValueError('invalid_adapter_output')
             return output
