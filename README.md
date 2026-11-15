@@ -19,7 +19,7 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 
 ## Detalle de reporte y piloto Qwen
 
-- El panel privado reúne cada conversación bajo el ciudadano, con tres columnas y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
+- El panel privado reúne cada conversación bajo el ciudadano, con tres columnas, estado del análisis y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
 - El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. El tiempo de inferencia y la exactitud se medirán en el VPS con la tanda pendiente. Los conteos cubren entrada, no reintentos.
 - [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md).
 

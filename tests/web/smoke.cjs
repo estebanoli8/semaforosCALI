@@ -25,6 +25,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
       if(['/reportes','/semaforos'].includes(path))return route.fulfill({
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
+      if(path==='/metricas')return route.fulfill({contentType:'text/html',body:readFileSync('semaforos/web/metrics.html')});
       if(path==='/marca-esteban.png')return route.fulfill({contentType:'image/png',body:readFileSync('semaforos/assets/logo-esteban.png')});
       if(path==='/semaforos/datos'){
         assert.equal(request.headers().authorization,undefined);
@@ -246,10 +247,10 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage)),[]);
     await page.locator('#logout').click();
     await page.locator('#login').waitFor({state:'visible'});
-    await page.goto('http://127.0.0.1:8765/metrics.html');
+    await page.goto('http://127.0.0.1:8765/metricas');
     assert.equal(await page.locator('#metricsWorkspace').isVisible(),false);
-    await page.getByLabel('Clave de acceso del equipo').fill('x'.repeat(32));
-    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.locator('#metricsToken').fill('x'.repeat(32));
+    await page.locator('#metricsToken').press('Enter');
     await page.getByText('WER · tasa de error de palabras').waitFor();
     assert.match(await page.locator('#metricsContent').textContent(),/25 %/);
     assert.equal(await page.locator('#metricsContent').getByRole('img').count(),2);

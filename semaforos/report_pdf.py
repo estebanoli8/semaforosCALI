@@ -189,10 +189,15 @@ def render_detailed(data, generated, link_for, expires_at):
     for row in data['items']:
         dates=f'{date_label(row["date_from"])} – {date_label(row["date_to"])}'
         story.append(KeepTogether([Spacer(0,12),paragraph(row['reporter'],bold),paragraph(dates,small)]))
+        pending=row['analysis_state']=='pending'
+        missing='Pendiente de análisis' if pending else 'No detectado'
+        if pending or row['analysis_state']=='partial':
+            story.append(paragraph('Análisis de fuentes en curso.' if pending else
+                                   'Descripción parcial. Alguna fuente no terminó correctamente.',small))
         for episode in row['episodes']:
             if episode['location']:
                 story.append(paragraph(episode['location']+' · '+episode['location_status'].replace('_',' '),bold))
-            if episode['inferred_fault']:
+            if episode['inferred_fault'] and row['analysis_state']=='completed':
                 story.append(paragraph('Semáforo dañado, inferido por el contexto del reporte.'))
             for key,label in FIELDS.items():
                 fields=episode['fields'][key]
@@ -200,7 +205,7 @@ def render_detailed(data, generated, link_for, expires_at):
                     for code in ('D','T','R'):
                         matching=[field for field in fields if field['code']==code]
                         if not matching:
-                            story.append(paragraph(TAGS[code][2]+' · No detectado'))
+                            story.append(paragraph(TAGS[code][2]+' · '+missing))
                         for field in matching:
                             date=(' · Mensaje del '+date_label(date_time.fromisoformat(field['date']))) if code=='T' and field.get('date') else ''
                             story.append(paragraph(f'{TAGS[code][2]} · {field["literal"]}{date}'))
@@ -208,7 +213,7 @@ def render_detailed(data, generated, link_for, expires_at):
                     for field in fields:
                         story.append(paragraph(f'{label} · {field["literal"]}'))
                 else:
-                    story.append(paragraph(f'{label} · No detectado'))
+                    story.append(paragraph(f'{label} · {missing}'))
         for item in row['evidence']:
             label=escape(item['type'].replace('_',' ')+' · '+item['name'])
             if link_for:

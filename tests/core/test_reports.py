@@ -308,6 +308,8 @@ class ReportTests(unittest.TestCase):
             self.assertIn('Quinta con 5',direct.text)
         old={**self.config,'text':{'model':'test','threads':4}}
         old_job=self.store.enqueue(chat['id'],'text','legacy-test',old,{'sources':[]})
+        pending=self.client.get('/detailed-records',headers=self.auth).json()['items'][0]
+        self.assertEqual(pending['analysis_state'],'pending')
         self.assertEqual(prepare(self.store,self.config,conversation=self.cid)['pending_jobs'],1)
         self.assertGreater(prepare(self.store,self.config,conversation=self.cid,apply=True)['chat_batches'],0)
         self.assertEqual(prepare(self.store,self.config,conversation=self.cid)['pending_jobs'],0)

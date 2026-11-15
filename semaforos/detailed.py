@@ -178,6 +178,25 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         source_key=(row['experiment_id'],row['config']['text'].get('extraction'),row['payload'].get('transcription_run_id'))
         if current.setdefault(ident,source_key)==source_key:
             runs[cid].append(row)
+    processing={row['conversation_id']:row for row in db.execute("""
+        WITH candidates AS (
+          SELECT e.conversation_id,j.* FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+          WHERE e.conversation_id=ANY(%s::uuid[]) AND j.stage IN ('audio','video','text')
+            AND NOT (j.payload ? 'superseded_by_review')
+        ), latest AS (
+          SELECT DISTINCT ON (evidence_id,stage) evidence_id,stage,experiment_id,
+                 config->'text'->>'extraction' AS version
+          FROM candidates ORDER BY evidence_id,stage,
+            (config->'text'->>'extraction'='compact-v1') DESC NULLS LAST,created_at DESC,id DESC
+        )
+        SELECT j.conversation_id,
+               bool_or(j.state IN ('pending','running') OR
+                       (j.stage IN ('audio','video') AND j.state='completed' AND j.expanded_at IS NULL)) AS pending,
+               bool_or(j.state='failed' OR j.expansion_error IS NOT NULL) AS failed
+        FROM candidates j JOIN latest l USING (evidence_id,stage,experiment_id)
+        WHERE j.config->'text'->>'extraction' IS NOT DISTINCT FROM l.version
+        GROUP BY j.conversation_id
+    """,(ids,))}
     result=[]
     for conversation in conversations:
         cid=conversation['id']; inventory=inventories[cid]
@@ -188,7 +207,9 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         key=phone if phone.isdecimal() and len(phone)>=8 else str(cid)
         evidence=[{'id':row['id'],'type':evidence_type(row),'name':row['original_name']}
                   for row in inventory.values()]
-        item={'id':cid,'reporter':reporter,'reporter_key':key,'date_from':min(dates,default=None),
+        status=processing.get(cid,{})
+        state='pending' if status.get('pending') else 'partial' if status.get('failed') else 'completed'
+        item={'id':cid,'reporter':reporter,'analysis_state':state,'reporter_key':key,'date_from':min(dates,default=None),
               'date_to':max(dates,default=None),'episodes':compose(runs[cid]),
               'evidence_counts':dict(Counter(file['type'] for file in evidence))}
         if include_evidence:

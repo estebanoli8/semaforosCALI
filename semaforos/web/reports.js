@@ -107,7 +107,7 @@ function catalog(row) {
   const details=node('details');
   const total=groups.reduce((sum,[key])=>sum+counts[key],0);
   details.append(node('summary',total+(total===1?' archivo':' archivos')));
-  details.append(node('small',row.evidence_scope==='conversacion'?'De la conversación':'Vinculados al registro'));
+  details.append(node('small',(row.episodes||row.evidence_scope==='conversacion')?'De la conversación':'Vinculados al registro'));
   const list=node('ul');
   for(const [key,labels] of groups) {
     const entry=node('li');
@@ -136,8 +136,13 @@ function dateLabel(value) {
 function dateRange(from,to) {
   return from?dateLabel(from)+' – '+dateLabel(to):dateLabel(null);
 }
-function episodeDescription(episodes) {
+function episodeDescription(episodes, state) {
   const box=node('div');
+  const pending=state==='pending';
+  const missing=pending?'Pendiente de análisis':'No detectado';
+  if(pending || state==='partial')box.append(node('p',pending?'Análisis de fuentes en curso.':
+    'Descripción parcial. Alguna fuente no terminó correctamente.'));
+
   for(const episode of episodes) {
     const list=node('dl');
     list.className='episode-fields';
@@ -150,10 +155,10 @@ function episodeDescription(episodes) {
       const value=node('dd');
       const hits=episode.fields[key]||[];
       if(key==='dano') {
-        if(episode.inferred_fault)value.append(node('p','Semáforo dañado, inferido por el contexto del reporte.'));
+        if(episode.inferred_fault&&!pending&&state!=='partial')value.append(node('p','Semáforo dañado, inferido por el contexto del reporte.'));
         for(const tag of ['D','T','R']) {
           const matches=hits.filter(hit=>hit.code===tag);
-          if(!matches.length)value.append(node('p',tagLabels[tag]+' · No detectado'));
+          if(!matches.length)value.append(node('p',tagLabels[tag]+' · '+missing));
           for(const hit of matches) {
             const metadata=[sources[hit.origin],hit.code==='T'&&hit.date?'Mensaje del '+dateLabel(hit.date):null].filter(Boolean);
             const line=node('p',tagLabels[tag]+' · '+hit.literal);
@@ -162,7 +167,7 @@ function episodeDescription(episodes) {
           }
         }
       } else {
-        if(!hits.length)value.append(node('p','No detectado'));
+        if(!hits.length)value.append(node('p',missing));
         for(const hit of hits) {
           const line=node('p',hit.literal);
           if(sources[hit.origin])line.append(node('small',' — '+sources[hit.origin]));
@@ -192,7 +197,7 @@ function renderDetailed(rows,query) {
     for(const row of conversations) {
       const tr=node('tr');
       const description=node('td');description.className='report-description';
-      description.append(episodeDescription(row.episodes));
+      description.append(episodeDescription(row.episodes,row.analysis_state));
       tr.append(node('td',dateRange(row.date_from,row.date_to)),description,catalog(row));
       rows.append(tr);
     }
@@ -372,7 +377,7 @@ function reviewForm(result, mode) {
     if(semantic)form.append(group);
   }
   const save=node('button','Guardar evaluación');
-  save.type='submit';save.classList.toggle('saved',stored!=null);
+  save.type='submit';save.className='secondary';save.classList.toggle('saved',stored!=null);
   form.addEventListener('input',()=>{save.classList.remove('saved');status.textContent='Cambios pendientes';});
   const status=node('small',stored==null?'Sin evaluación guardada':'Evaluación guardada');
   status.setAttribute('role','status');
@@ -487,7 +492,7 @@ function renderEvidence(data) {
   if(data.episodes) {
     byId('evidenceTitle').textContent=data.reporter;
     byId('evidenceScope').textContent=dateRange(data.date_from,data.date_to);
-    byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes));
+    byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state));
   } else byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
   const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
   list.replaceChildren();nav.replaceChildren();
