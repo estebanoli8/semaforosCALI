@@ -19,7 +19,7 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 
 ## Detalle de reporte y piloto Qwen
 
-- El panel privado reúne cada conversación bajo el ciudadano, con tres columnas, estado del análisis y acceso directo a las evidencias. Genera el PDF con enlaces individuales dentro del plazo indicado.
+- **Detalle de reporte** empieza con los nombres o números de los ZIP cerrados. Al abrir un nombre aparecen sus ubicaciones. Al abrir un reporte se ven Daño, Gestión, Peligro, Ubicación y sus enlaces. Los archivos con vínculo indeterminado quedan accesibles desde la conversación. El PDF muestra el nombre, los cruces y sus enlaces por archivo. [Uso y alcance](docs/detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf).
 - El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. Los resultados de inferencia medidos en el VPS aparecen en el corte del piloto. Los conteos cubren entrada, no reintentos.
 - [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
 
@@ -61,7 +61,7 @@ Hubo **39 ejecuciones de texto con `compact-v1`**. La instrumentación de Ollama
 
 ## Uso y verificación
 
-- **Acción Popular.** Entra una vez con la clave del equipo. **Detalle de reporte** muestra las conversaciones y el botón de PDF del mismo corte. Cada enlace de evidencia abre la conversación en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
+- **Acción Popular.** Entra una vez con la clave del equipo. **Detalle de reporte** muestra los reportes por ciudadano y el botón de PDF del mismo corte. Cada enlace de evidencia abre la conversación en una pestaña nueva, con cruce asociado, momento del mensaje, transcripción o estado del modelo y evaluación humana. **Desempeño de modelos** y **Cargue de ZIP** usan la misma sesión.
 - **Reproceso.** Tras desplegar, ejecuta `python -m semaforos.reprocess` para estimar el lote. Prueba con `--conversation UUID --apply` antes de encolar todo con `--apply`. Se reutilizan las detecciones visuales y los artefactos del video. Consulta el [procedimiento de Acción Popular](docs/accion_popular.md).
 - El panel privado permite subir nuevos ZIP mientras el trabajador procesa los anteriores. Se pueden cargar las conversaciones conforme se exportan de WhatsApp.
 - La consulta pública genera su corte a partir de lo que ya está guardado. La tabla prioriza cruces identificados e incluye conteos por intersección y por tipo de evidencia. Los indicadores superiores cuentan reportes, fotos, videos, audios y cruces. Los enlaces abren un visor privado compartido por los tipos de evidencia, con lectura del TXT completo, fotos con cajas cuando hay detecciones y audio y video a 1×, 1,5× o 2×. Se ingresa una vez por sesión con la clave del equipo. El mapa aparece debajo de la tabla mientras no tenga puntos. La guía explica cómo se agrupan los relatos y cuándo sus ubicaciones se pueden mostrar en el mapa.

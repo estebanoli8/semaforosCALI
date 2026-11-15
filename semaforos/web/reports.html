@@ -38,7 +38,7 @@
     <div class="stats report-stats" id="reportStats"></div>
     <section id="pdfPanel" hidden>
       <div class="sectionTitle"><h2>Informe general</h2><button class="secondary" id="reportLogout">Salir</button></div>
-      <p>Genera un PDF fechado con los reportes vigentes, incluidos los pendientes.</p>
+      <p id="pdfSummary">Genera un PDF fechado con los reportes vigentes, incluidos los pendientes.</p>
       <label class="check-label"><input type="checkbox" id="shareEvidence"> Incluir enlaces de evidencia válidos durante 7 días. Quien reciba el enlace podrá abrir el archivo vinculado.</label>
       <button id="exportPdf">Descargar informe PDF</button>
     </section>
@@ -46,13 +46,14 @@
       <div class="sectionTitle"><h2>Registros del corte</h2><button class="secondary" id="updateRecords">Actualizar</button></div>
       <p id="crossingCountNote" class="muted" hidden><strong>Registros en este cruce</strong> cuenta las filas asociadas a la misma intersección, incluida la que estás consultando. Los relatos de distintos ciudadanos cuentan por separado. El guion indica que falta identificar el cruce.</p>
       <label for="reportSearch">Buscar por código o cruce</label><input type="search" id="reportSearch" placeholder="Calle, carrera o R-000001">
-      <div class="tableScroll"><table>
+      <div id="citizenReports" hidden></div>
+      <div class="tableScroll" id="recordsTable"><table>
         <thead><tr><th id="recordCodeHeader">Reporte</th><th id="recordDateHeader">Fecha del mensaje</th><th id="recordCrossingHeader">Cruce</th><th>Descripción</th>
           <th id="recordStateHeader">Estado</th><th id="recordCrossingCountHeader">Registros en este cruce</th><th id="recordEvidenceHeader">Evidencias</th></tr></thead>
         <tbody id="reportRows"></tbody>
       </table></div>
       <p id="reportEmpty" class="muted"></p>
-      <div class="pagination">
+      <div class="pagination" id="reportPagination">
         <button id="prevReport" class="secondary">Anterior</button><span id="reportPageInfo"></span><button id="nextReport" class="secondary">Siguiente</button>
       </div>
     </section>

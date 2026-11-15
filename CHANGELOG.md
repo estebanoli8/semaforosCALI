@@ -1,5 +1,10 @@
 # Historial
 
+## 2026-11-15 — Detalle anidado por ciudadano y cruce
+
+- El detalle privado abre nombre o número del ZIP, luego ubicación y, por último, los cuatro campos con sus evidencias.
+- El PDF incluye los dos primeros niveles y enlaces a los archivos. Distingue evidencia del cruce y archivos de la conversación.
+
 ## 2026-11-15 — Piloto de detalle ciudadano y Qwen compacto
 
 - El [PR #18](https://github.com/estebanoli8/semaforosCALI/pull/18) integró los cuatro campos del detalle, el PDF enlazado, las evaluaciones humanas y la alerta de formato del TXT.

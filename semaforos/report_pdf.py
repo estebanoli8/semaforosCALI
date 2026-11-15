@@ -161,14 +161,18 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
 def render_detailed(data, generated, link_for, expires_at):
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer
-    from .detailed import date_label
-    from datetime import datetime as date_time
-    from .text_fields import FIELDS, TAGS, WEB_SUBTITLE, WEB_TITLE
+    from reportlab.platypus import Paragraph, SimpleDocTemplate
+    from .text_fields import WEB_SUBTITLE, WEB_TITLE
 
     regular=ParagraphStyle('DetailRegular',fontName='ReportSans',fontSize=9,leading=13)
-    bold=ParagraphStyle('DetailHeading',parent=regular,fontName='ReportSansBold',fontSize=12,leading=15)
+    bold=ParagraphStyle('DetailHeading',parent=regular,fontName='ReportSansBold',fontSize=12,leading=15,
+                        spaceBefore=10,keepWithNext=True)
+    crossing=ParagraphStyle('DetailCrossing',parent=regular,fontName='ReportSansBold',leftIndent=12,
+                            spaceBefore=4,keepWithNext=True)
     small=ParagraphStyle('DetailSmall',parent=regular,fontSize=8,leading=11)
+    evidence=ParagraphStyle('DetailEvidence',parent=small,leftIndent=24,spaceAfter=4)
+    file_labels={'audio':'Audio de WhatsApp','audio_video':'Audio de video','image':'Foto','video':'Video',
+                 'chat':'Chat TXT','frame':'Fotograma','other':'Archivo'}
 
     def paragraph(text, style=regular):
         return Paragraph(escape(text).replace('\n','<br/>'),style)
@@ -186,39 +190,30 @@ def render_detailed(data, generated, link_for, expires_at):
     story=[paragraph(f'{len(data["items"])} conversaciones · Corte {formatted_date(data["cutoff"])}',small)]
     if expires_at:
         story.append(paragraph('Enlaces de evidencia disponibles hasta '+formatted_date(expires_at),small))
+    groups={}
     for row in data['items']:
-        dates=f'{date_label(row["date_from"])} – {date_label(row["date_to"])}'
-        story.append(KeepTogether([Spacer(0,12),paragraph(row['reporter'],bold),paragraph(dates,small)]))
-        pending=row['analysis_state']=='pending'
-        missing='Pendiente de análisis' if pending else 'No detectado'
-        if pending or row['analysis_state']=='partial':
-            story.append(paragraph('Análisis de fuentes en curso.' if pending else
-                                   'Descripción parcial. Alguna fuente no terminó correctamente.',small))
-        for episode in row['episodes']:
-            if episode['location']:
-                story.append(paragraph(episode['location']+' · '+episode['location_status'].replace('_',' '),bold))
-            if episode['inferred_fault'] and row['analysis_state']=='completed':
-                story.append(paragraph('Semáforo dañado, inferido por el contexto del reporte.'))
-            for key,label in FIELDS.items():
-                fields=episode['fields'][key]
-                if key=='dano':
-                    for code in ('D','T','R'):
-                        matching=[field for field in fields if field['code']==code]
-                        if not matching:
-                            story.append(paragraph(TAGS[code][2]+' · '+missing))
-                        for field in matching:
-                            date=(' · Mensaje del '+date_label(date_time.fromisoformat(field['date']))) if code=='T' and field.get('date') else ''
-                            story.append(paragraph(f'{TAGS[code][2]} · {field["literal"]}{date}'))
-                elif fields:
-                    for field in fields:
-                        story.append(paragraph(f'{label} · {field["literal"]}'))
-                else:
-                    story.append(paragraph(f'{label} · {missing}'))
-        for item in row['evidence']:
-            label=escape(item['type'].replace('_',' ')+' · '+item['name'])
+        groups.setdefault(row['reporter_key'],[]).append(row)
+
+    def evidence_links(files):
+        if not files:
+            return paragraph('Sin archivos vinculados.',evidence)
+        links=[]
+        for item in files:
+            label=escape(file_labels[item['type']]+' · '+item['name'])
             if link_for:
                 label=f'<a href="{escape(link_for(item["id"]),quote=True)}" color="#204C8A">{label}</a>'
-            story.append(Paragraph(label,small))
+            links.append(label)
+        return Paragraph('  |  '.join(links),evidence)
+
+    for rows in groups.values():
+        story.append(paragraph(rows[0]['archive_label'],bold))
+        for row in rows:
+            for episode in row['episodes']:
+                story.append(paragraph(episode['location'] or 'Ubicación sin identificar',crossing))
+                story.append(evidence_links(episode['evidence']))
+            if row['unassigned_evidence']:
+                story.append(paragraph('Otros archivos de la conversación',crossing))
+                story.append(evidence_links(row['unassigned_evidence']))
     buffer=BytesIO()
     document=SimpleDocTemplate(buffer,pagesize=letter,leftMargin=46,rightMargin=44,topMargin=76,bottomMargin=44,
                                title=WEB_TITLE,author='Esteban Oliveros Montoya')

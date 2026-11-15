@@ -6,6 +6,7 @@ const pageSize = 20;
 const params = new URLSearchParams(location.search);
 const selectedRecord = team ? params.get('registro') : null;
 const selectedConversation = team ? params.get('conversacion') : null;
+const selectedEpisode = selectedConversation ? params.get('episodio') : null;
 const selectedType = params.get('tipo') === 'audio_video' ? 'video' : params.get('tipo');
 const locationEditor = team && params.has('ubicaciones') && !selectedRecord && !selectedConversation;
 const detailed = team && !locationEditor;
@@ -107,15 +108,12 @@ function catalog(row) {
   const details=node('details');
   const total=groups.reduce((sum,[key])=>sum+counts[key],0);
   details.append(node('summary',total+(total===1?' archivo':' archivos')));
-  details.append(node('small',(row.episodes||row.evidence_scope==='conversacion')?'De la conversación':'Vinculados al registro'));
+  details.append(node('small',(row.evidence_scope==='conversacion')?'De la conversación':'Vinculados al registro'));
   const list=node('ul');
   for(const [key,labels] of groups) {
     const entry=node('li');
     const count=counts[key];
-    const link=node('a',count+' '+labels[count===1?0:1]);
-    link.href='/reportes?'+new URLSearchParams(row.episodes?{conversacion:row.id,tipo:key}:{registro:row.code,tipo:key});
-    link.target='_blank';
-    link.rel='noopener noreferrer';
+    const link=evidenceLink(count+' '+labels[count===1?0:1],{registro:row.code,tipo:key});
     link.title='Abrir detalle en una pestaña nueva';
     entry.append(link);list.append(entry);
   }
@@ -136,7 +134,7 @@ function dateLabel(value) {
 function dateRange(from,to) {
   return from?dateLabel(from)+' – '+dateLabel(to):dateLabel(null);
 }
-function episodeDescription(episodes, state) {
+function episodeDescription(episodes, state, showLocation=true) {
   const box=node('div');
   const pending=state==='pending';
   const missing=pending?'Pendiente de análisis':'No detectado';
@@ -146,7 +144,7 @@ function episodeDescription(episodes, state) {
   for(const episode of episodes) {
     const list=node('dl');
     list.className='episode-fields';
-    if(episode.location) {
+    if(showLocation && episode.location) {
       const note=episode.location_status?.replaceAll('_',' ');
       box.append(node('h4',episode.location+(note?' · '+note:'')));
     }
@@ -180,32 +178,75 @@ function episodeDescription(episodes, state) {
   }
   return box;
 }
-function renderDetailed(rows,query) {
+function evidenceLink(label, params) {
+  const link=node('a',label);
+  link.href='/reportes?'+new URLSearchParams(params);
+  link.target='_blank';
+  link.rel='noopener noreferrer';
+  return link;
+}
+
+function detailedEpisode(row, episode) {
+  const report=node('details');
+  report.className='citizen-report';
+  const label=episode.location||'Ubicación sin identificar';
+  const summary=node('summary');
+  summary.append(node('span',label),node('small',dateRange(row.date_from,row.date_to)));
+  report.append(summary);
+  report.addEventListener('toggle',()=>{
+    if(!report.open || report.children.length>1)return;
+    const body=node('div');
+    body.className='citizen-report-body';
+    body.append(episodeDescription([episode],row.analysis_state,false));
+    const files=node('div');
+    files.className='citizen-report-files';
+    files.append(node('h4','Evidencias'));
+    const links=node('ul');
+    for(const [key,labels] of Object.entries(evidenceTypes)) {
+      const count=episode.evidence_counts?.[key]||0;
+      if(!count || key==='audio_video')continue;
+      const item=node('li');
+      item.append(evidenceLink(count+' '+labels[count===1?0:1],{conversacion:row.id,episodio:episode.id,tipo:key}));
+      links.append(item);
+    }
+    if(links.children.length)files.append(links);
+    else files.append(node('p','Sin archivos vinculados a este reporte.'));
+    if(row.unassigned_evidence_count)files.append(evidenceLink('Ver archivos de la conversación',{conversacion:row.id}));
+    body.append(files);
+    report.append(body);
+  });
+  return report;
+}
+
+function renderDetailed(query) {
+  const list=byId('citizenReports');
   const groups=new Map();
   for(const row of view.items) {
-    const searchable=[row.reporter,...row.episodes.map(ep=>ep.location)].filter(Boolean).join(' ').toLocaleLowerCase('es-CO');
-    if(!searchable.includes(query))continue;
-    const group=groups.get(row.reporter_key)||[];
-    group.push(row);groups.set(row.reporter_key,group);
+    const label=row.archive_label||row.reporter;
+    const nameMatch=[label,row.reporter].some(value=>value.toLocaleLowerCase('es-CO').includes(query));
+    const reports=row.episodes.filter(ep=>nameMatch||(ep.location||'Ubicación sin identificar').toLocaleLowerCase('es-CO').includes(query));
+    if(!reports.length)continue;
+    if(!groups.has(row.reporter_key))groups.set(row.reporter_key,{label,items:[]});
+    const {items}=groups.get(row.reporter_key);
+    for(const episode of reports)items.push({row,episode});
   }
-  const people=[...groups.values()];
-  const end=Math.min(people.length,(page+1)*pageSize);
-  for(const conversations of people.slice(page*pageSize,end)) {
-    const heading=node('tr'), name=node('th',conversations[0].reporter);
-    name.colSpan=3;name.scope='rowgroup';heading.className='citizen-heading';
-    heading.append(name);rows.append(heading);
-    for(const row of conversations) {
-      const tr=node('tr');
-      const description=node('td');description.className='report-description';
-      description.append(episodeDescription(row.episodes,row.analysis_state));
-      tr.append(node('td',dateRange(row.date_from,row.date_to)),description,catalog(row));
-      rows.append(tr);
-    }
+  list.replaceChildren();
+  for(const {label,items} of groups.values()) {
+    const person=node('details');
+    person.className='citizen-reports';
+    const summary=node('summary');
+    summary.append(node('span',label),node('small',items.length+(items.length===1?' reporte':' reportes')));
+    person.append(summary);
+    person.addEventListener('toggle',()=>{
+      if(!person.open || person.children.length>1)return;
+      const reports=node('div');
+      reports.className='citizen-report-list';
+      reports.append(...items.map(({row,episode})=>detailedEpisode(row,episode)));
+      person.append(reports);
+    });
+    list.append(person);
   }
-  byId('reportEmpty').textContent=people.length?'':'Aún no hay conversaciones para mostrar.';
-  byId('reportPageInfo').textContent=people.length?`${page*pageSize+1}–${end} de ${people.length}`:'0';
-  byId('prevReport').disabled=page===0;
-  byId('nextReport').disabled=end>=people.length;
+  byId('reportEmpty').textContent=groups.size?'':'Aún no hay reportes para mostrar con esta búsqueda.';
 }
 
 function renderRows() {
@@ -213,7 +254,7 @@ function renderRows() {
   const rows=byId('reportRows');
   rows.replaceChildren();
   const query=byId('reportSearch').value.trim().toLocaleLowerCase('es-CO');
-  if(detailed)return renderDetailed(rows,query);
+  if(detailed)return renderDetailed(query);
   const matching=view.items.filter(row=>((team?row.code+' ':'')+(row.intersection||'')).toLocaleLowerCase('es-CO').includes(query));
   const end = Math.min(matching.length,(page+1)*pageSize);
   for(const row of matching.slice(page*pageSize,end)) {
@@ -490,8 +531,8 @@ function renderEvidence(data) {
   const scope=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
   byId('evidenceScope').textContent=data.date?scope+' · '+formatDate(data.date):scope;
   if(data.episodes) {
-    byId('evidenceTitle').textContent=data.reporter;
-    byId('evidenceScope').textContent=dateRange(data.date_from,data.date_to);
+    byId('evidenceTitle').textContent=data.intersection||data.archive_label||data.reporter;
+    byId('evidenceScope').textContent=scope+' · '+dateRange(data.date_from,data.date_to);
     byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state));
   } else byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
   const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
@@ -546,7 +587,9 @@ function renderEvidence(data) {
 async function loadEvidence(signal) {
   byId('reportStatus').textContent='Consultando evidencias…';
   try {
-    const response=await fetch((selectedConversation?'/report-media/conversations/':'/report-media/records/')+encodeURIComponent(selectedConversation||selectedRecord),{signal,cache:'no-store'});
+    const base=selectedConversation?'/report-media/conversations/':'/report-media/records/';
+    const query=selectedEpisode?'?'+new URLSearchParams({episodio:selectedEpisode}):'';
+    const response=await fetch(base+encodeURIComponent(selectedConversation||selectedRecord)+query,{signal,cache:'no-store'});
     if(response.status===401) {
       byId('evidenceAccess').hidden=true;
       byId('evidenceFiles').replaceChildren();
@@ -632,7 +675,7 @@ function logout() {
   request?.abort();request=null;view=null;selected=null;
   byId('evidenceAccess').hidden=true;byId('evidenceFiles').replaceChildren();byId('evidenceTypes').replaceChildren();
   byId('reportWork').hidden=true;byId('editPanel').hidden=true;byId('reportLogin').hidden=false;
-  for(const id of ['reportStats','reportRows','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
+  for(const id of ['reportStats','reportRows','citizenReports','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
   byId('locationForm').reset();
   byId('reportSearch').value='';
   if(byId('shareEvidence'))byId('shareEvidence').checked=false;
@@ -648,7 +691,11 @@ byId('crossingCountNote').hidden=locationEditor||detailed;
 byId('recordCrossingHeader').hidden=detailed;
 byId('recordCrossingCountHeader').hidden=detailed;
 if(detailed) {
-  byId('recordDateHeader').textContent='Fecha';
+  byId('recordsTable').hidden=true;
+  byId('reportPagination').hidden=true;
+  byId('citizenReports').hidden=false;
+  byId('recordsPanel').querySelector('h2').textContent='Reportes por ciudadano';
+  byId('pdfSummary').textContent='El PDF reúne nombres, cruces y enlaces a las evidencias.';
   byId('reportSearch').labels[0].textContent='Buscar por ciudadano o ubicación';
   byId('reportSearch').placeholder='Nombre, celular, dirección o referencia';
   byId('shareEvidence').checked=true;
