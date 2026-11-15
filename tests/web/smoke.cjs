@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 const {createHash}=require('node:crypto');
-const {mkdirSync}=require('node:fs');
+const {mkdirSync,readFileSync}=require('node:fs');
 const {chromium}=require('playwright');
 const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--directory','semaforos/web'],{stdio:'ignore'});
 (async()=>{
@@ -12,14 +12,21 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     let session=null,interrupt=true,chunks=0,replays=0;
     const uploadedNames=[];
-    let report=null,relation=null,showSyntheticJob=false,curationLabel=null;
+    let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
     const chunkSize=4194304;
     const file=Buffer.alloc(chunkSize+23,65);
     await page.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
+      if(['/reportes','/semaforos'].includes(path))return route.fulfill({
+        contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
+      if(path==='/semaforos/datos'){
+        assert.equal(request.headers().authorization,undefined);
+        return route.fulfill({json:{cutoff:'2026-11-14T12:00:00Z',items:[],boundary_version:null,
+          map:{width:720,height:430,markers:[],polygons:[],grid:[]}}});
+      }
       if(['/', '/panel.js', '/panel.css', '/review.js', '/comparison.js','/curation.js','/curation.css',
-          '/metrics.html','/metrics.js','/metrics.css'].includes(path))return route.continue();
+          '/metrics.html','/metrics.js','/metrics.css','/reports.js','/reports.css'].includes(path))return route.continue();
       if(path==='/favicon.ico')return route.fulfill({status:204});
       assert.equal(request.headers().authorization,'Bearer '+'x'.repeat(32));
       let result;
@@ -32,6 +39,21 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
       }
+      else if(path==='/report-map'){
+        result={cutoff:'2026-11-14T12:00:00Z',boundary_version:'test',map:{width:720,height:430,
+          markers:locationSaved?[{code:'R-000001',x:360,y:250}]:[],polygons:[],grid:[]},
+          items:[{id:'report-synthetic',code:'R-000001',version:1,map_version:locationSaved?1:0,
+            date:'2026-11-01T15:00:00Z',intersection:'Calle 5 con Carrera 70',description:'Semáforo reportado apagado',
+            revision:'pendiente',processing:'completado',reports_at_intersection:1,
+            latitude:locationSaved?3.432:null,longitude:locationSaved?-76.531:null,
+            published:false,evidence:[],coordinates_candidates:[{latitude:3.432,longitude:-76.531}]}]};
+      }
+      else if(path==='/reports/report-synthetic/map'){
+        const body=request.postDataJSON(); assert.equal(body.latitude,3.432);assert.equal(body.published,false);
+        locationSaved=true;result={version:1};
+      }
+      else if(path==='/report-exports')return route.fulfill({contentType:'application/pdf',
+        headers:{'X-Report-Export-ID':'example-cut'},body:Buffer.from('%PDF-1.4')});
       else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
       else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
       else if(path==='/export-relations'&&request.method()==='GET')result={total:relation?1:0,version:relation?1:0,items:relation?[relation]:[]};
@@ -190,6 +212,23 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.screenshot({path:'test-artifacts/metrics-mobile.png',fullPage:true});
     await page.getByRole('button',{name:'Salir',exact:true}).click();
     assert.equal(await page.locator('#metricsContent').textContent(),'');
+    assert.deepEqual(errors,[]);
+    await page.goto('http://127.0.0.1:8765/reportes');
+    await page.locator('#reportKey').fill('x'.repeat(32));
+    await page.getByRole('button',{name:'Entrar',exact:true}).click();
+    await page.getByRole('button',{name:'R-000001',exact:true}).click();
+    await page.getByRole('button',{name:/Usar GPS sugerido/}).click();
+    await page.locator('#mapReviewer').fill('Evaluador sintético');
+    await page.getByRole('button',{name:'Guardar ubicación y visibilidad'}).click();
+    await page.locator('.map-pin').waitFor();
+    const pdfDownload=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Descargar informe PDF'}).click();
+    assert.equal((await pdfDownload).suggestedFilename(),'semaforos-cali-example-cut.pdf');
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+    await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
+    await page.goto('http://127.0.0.1:8765/semaforos');
+    await page.getByText('Aún no hay reportes para mostrar con esta selección.').waitFor();
+    assert.equal(await page.locator('#pdfPanel').isVisible(),false);
     assert.deepEqual(errors,[]);
     console.log('Panel: acceso, carga interrumpida/reanudada, agrupación explícita en reporte, móvil y salida OK (API simulada).');
   }finally{await browser.close();}

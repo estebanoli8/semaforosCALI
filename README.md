@@ -11,7 +11,8 @@ Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fall
 | Procesamiento | Dos carriles, texto y multimedia. Conserva texto literal y originales, enlaza derivaciones y muestra el avance por tarea y conversación. |
 | Revisión | Panel privado con transcripciones, audio reproducible, miniaturas anotadas, microreportes e indicadores preliminares. Permite corregir transcripciones y consolidar reportes con historial. |
 | Métricas de modelos | Portal privado integrado en `main` por el [PR #11](https://github.com/estebanoli8/semaforosCALI/pull/11). El despliegue de esta versión en el VPS está pendiente de confirmación. |
-| Entregables pendientes | Mapa y tabla de consulta pública, PDF general con fecha de generación, y correo por reporte mediante n8n. |
+| Mapa e informe | Portal privado con ubicación revisada y PDF general fechado. La ruta pública `/semaforos` muestra los registros con contenido depurado que el equipo habilite. Despliegue y prueba en el VPS pendientes de confirmación. |
+| Entregables pendientes | Cargar la cartografía oficial en el VPS, conectar el dominio definitivo y activar correo por reporte mediante n8n. |
 
 Una conversación puede originar varios reportes. Los relatos independientes sobre un mismo cruce conservan registros separados. La revisión coteja fecha, ubicación, descripción y evidencias con sus fuentes.
 
@@ -68,6 +69,7 @@ python tools/compare_runs.py runs/base.json runs/candidato.json --output runs/co
 
 - [Arquitectura](docs/arquitectura.md), [carga web](docs/carga_web.md) y [despliegue en Easypanel](docs/despliegue_easypanel.md).
 - [Curaduría y dos carriles](docs/curaduria_rendimiento.md), [audio y microreportes](docs/audio_y_microreportes.md), [consolidación y revisión](docs/reportes_revision.md) y [seguimiento de la cola](docs/observabilidad.md).
+- [Mapa, PDF, pausa y validación integral](docs/mapa_e_informe.md).
 - [Diseño de experimentos](docs/experimentos.md), [diccionario aprobado el 8 de noviembre](docs/diccionario.md) y [checkpoint inicial](docs/estado.md). Las decisiones posteriores sobre selección de ZIP y lectura de luces se reflejan en el estado actual de este README.
 - [Historial de cambios](CHANGELOG.md).
 

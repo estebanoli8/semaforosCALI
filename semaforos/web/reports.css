@@ -1,0 +1,22 @@
+.report-intro { margin: 36px 0 22px; }
+.report-intro h1 { font-size: clamp(2rem, 5vw, 3.6rem); margin: 16px 0 6px; }
+.report-intro p { margin-top: 0; }
+.report-stats article { min-width: 0; }
+#reportMap svg { display: block; width: 100%; max-height: 490px; border-radius: 12px; background: #f3f8f6; border: 1px solid #d5e1da; }
+.map-grid { stroke: #bbcfc5; stroke-width: .65; }
+.map-grid-label { fill: #47645a; font-size: 9px; }
+.map-city { fill: #dbece2; fill-rule: evenodd; stroke: #5e8070; stroke-width: 1.2; }
+.map-pin { fill: #b52a3c; stroke: #fff; stroke-width: 1.5; cursor: pointer; }
+.map-pin:focus { outline: none; stroke: #153a2f; stroke-width: 3; }
+.map-count { fill: #fff; dominant-baseline: middle; text-anchor: middle; pointer-events: none; font-size: 8px; font-weight: 700; }
+.report-intro a, #reportEvidence button { margin-right: 8px; }
+#reportRows td:nth-child(4) { min-width: 170px; max-width: 360px; overflow-wrap: anywhere; white-space: pre-line; }
+#reportRows td { vertical-align: top; }
+#reportMap, .coordinates, #coordinateCandidates { margin-block: 12px; }
+.coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
+.coordinates input { min-width: 0; width: 100%; }
+.check-label { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
+.check-label input { width: auto; min-width: auto; flex: 0 0 auto; }
+#reportEvidence { padding-left: 20px; }
+#reportEvidence li { margin: 8px 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .coordinates { grid-template-columns: 1fr; } }

@@ -40,6 +40,21 @@ class ReportChange(BaseModel):
     revision: Literal['pendiente','revisado','descartado'] | None = None
 
 
+class ReportLocation(BaseModel):
+    expected_report_version: int = Field(ge=1)
+    expected_version: int = Field(ge=0)
+    intersection: str = Field(min_length=1,max_length=240)
+    latitude: float | None = Field(default=None,ge=-90,le=90)
+    longitude: float | None = Field(default=None,ge=-180,le=180)
+    public_description: str | None = Field(default=None,max_length=1000)
+    reviewer: str = Field(min_length=1,max_length=100)
+    published: bool = False
+
+
+class ReportExport(BaseModel):
+    share_evidence: bool = False
+
+
 class UploadStart(BaseModel):
     name: str
     size: int = Field(strict=True,gt=0,le=2**53-1)
@@ -390,6 +405,56 @@ def create_app(store=None, root=None, config=None, token=None):
         if body.action=='create':raise HTTPException(400,'Usa /reports para crear')
         return change_report(store,body.model_dump(mode='json',exclude_unset=True),ident)
 
+    @private.get('/report-map')
+    def private_report_map():
+        from .report_map import snapshot
+        return snapshot(store,root)
+
+    @app.get('/semaforos/datos')
+    def public_report_map():
+        from .report_map import snapshot
+        return snapshot(store,root,public=True)
+
+    @private.put('/reports/{ident}/map')
+    def record_location(ident: UUID,body: ReportLocation):
+        from .report_map import save_location
+        try:
+            return save_location(store,ident,body.model_dump())
+        except ReportError as exc:
+            raise HTTPException(404 if str(exc)=='report_not_found' else 409,str(exc))
+
+    @private.post('/report-exports')
+    def export_report(body: ReportExport,request: Request):
+        from .report_pdf import make_export
+        origin=os.getenv('SC_REPORT_ORIGIN') or str(request.base_url)
+        try:
+            ident,path=make_export(store,root,token,body.share_evidence,origin)
+        except ReportError as exc:
+            raise HTTPException(400,str(exc))
+        return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf',
+                            headers={'X-Report-Export-ID':str(ident)})
+
+    @private.get('/report-exports/{ident}')
+    def download_report_export(ident: UUID):
+        with store.connect() as c:
+            row=c.execute('SELECT storage_path FROM report_pdf_exports WHERE id=%s',(ident,)).fetchone()
+        path=contained(root,row['storage_path']) if row else None
+        if not path or not path.is_file():
+            raise HTTPException(404,'Informe no disponible')
+        return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf')
+
+    @app.get('/informe/evidencia/{export_id}/{ident}')
+    def report_evidence(export_id: UUID,ident: UUID,firma: str = Query('',max_length=64)):
+        from .report_pdf import access_evidence
+        try:
+            row=access_evidence(store,export_id,ident,token,firma)
+        except ReportError:
+            raise HTTPException(404,'Enlace no disponible')
+        path=contained(root,row['storage_path'])
+        if not path.is_file():
+            raise HTTPException(404,'Archivo no disponible')
+        return FileResponse(path,filename=Path(row['original_name']).name,media_type='application/octet-stream')
+
     @private.get('/evidence/{ident}/download')
     def download_evidence(ident:UUID):
         with store.connect() as c:row=c.execute('SELECT storage_path,original_name FROM evidence WHERE id=%s',(ident,)).fetchone()
@@ -414,6 +479,19 @@ def create_app(store=None, root=None, config=None, token=None):
     def panel_js():return FileResponse(Path(__file__).with_name('web')/'panel.js',media_type='text/javascript')
     @app.get('/panel.css')
     def panel_css():return FileResponse(Path(__file__).with_name('web')/'panel.css',media_type='text/css')
+    @app.get('/reportes')
+    @app.get('/semaforos')
+    def report_page():
+        return FileResponse(Path(__file__).with_name('web')/'reports.html')
+
+    @app.get('/reports.js')
+    def report_script():
+        return FileResponse(Path(__file__).with_name('web')/'reports.js',media_type='text/javascript')
+
+    @app.get('/reports.css')
+    def report_style():
+        return FileResponse(Path(__file__).with_name('web')/'reports.css',media_type='text/css')
+
     @app.get('/metricas')
     def metrics_panel():
         return FileResponse(Path(__file__).with_name('web')/'metrics.html')
