@@ -59,6 +59,16 @@ HAVING bool_or(j.state IN ('completed','failed'))
 """
 
 
+def self_reported(text, expression):
+    for sentence in re.split(r'(?<=[.!?;])|\n', text):
+        if '?' in sentence:
+            continue
+        for match in re.finditer(expression,sentence):
+            if not re.search(r'\b(?:no|nunca|jamas)\s*$',sentence[:match.start()]):
+                return True
+    return False
+
+
 def source_features(source, findings):
     context = report_context(source['text'])
     locations = {item['label'] for item in context['locations']
@@ -76,9 +86,9 @@ def source_features(source, findings):
     if any(m['qualifier']=='riesgo_o_casi' for m in context['mentions']):
         topics.add('riesgo_o_casi_accidente')
     text = folded(source['text'])
-    if re.search(r'\b(?:me da miedo|nos da miedo|tengo miedo|tenemos miedo|me asusta)\b', text):
+    if self_reported(text,r'\b(?:me da miedo|nos da miedo|tengo miedo|tenemos miedo|me asusta)\b'):
         topics.add('miedo')
-    if re.search(r'\b(?:me da rabia|nos da rabia|me frustra|nos frustra|me molesta|nos molesta)\b', text):
+    if self_reported(text,r'\b(?:me da rabia|nos da rabia|me frustra|nos frustra|me molesta|nos molesta)\b'):
         topics.add('frustracion')
     # Literal durations are already extracted by a closed vocabulary and contain no free text.
     durations = {folded(value) for value in context['durations']}

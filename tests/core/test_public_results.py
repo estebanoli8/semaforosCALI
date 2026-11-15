@@ -31,3 +31,7 @@ class PublicResultsTests(unittest.TestCase):
         for text,point in examples:
             with self.subTest(text=text):
                 self.assertEqual(source_features({'text':text},set())['point'],point)
+
+    def test_negation_and_question_do_not_become_emotions(self):
+        features = source_features({'text':'No me da miedo. ¿Me molesta el tráfico?'},set())
+        self.assertFalse(features['topics'] & {'miedo','frustracion'})
