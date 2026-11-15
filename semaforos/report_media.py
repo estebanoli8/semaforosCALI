@@ -1,4 +1,4 @@
-"""Private report viewing with a short-lived, read-only media session."""
+"""Private report viewing with a short-lived team session."""
 import hashlib
 import hmac
 import mimetypes
@@ -10,8 +10,9 @@ import time
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from PIL import Image, ImageOps
 
@@ -19,7 +20,7 @@ from .files import contained
 from .report_map import snapshot
 from .reports import ReportError
 
-COOKIE = 'sc_report_media'
+COOKIE = 'sc_team_session'
 PREFIX = '/report-media'
 SESSION_SECONDS = 4 * 60 * 60
 SESSION_PATTERN = re.compile(r'[0-9]{1,12}\.[A-Za-z0-9_-]{24}\.[a-f0-9]{64}')
@@ -42,6 +43,13 @@ def session_identity(key, cookie):
     if int(expires)<=time.time() or not hmac.compare_digest(proof,sign(key,'session|'+identity)):
         raise HTTPException(401,'Acceso del equipo requerido')
     return identity
+
+
+def require_same_origin(request):
+    origin = urlsplit(request.headers.get('origin',''))
+    if (origin.scheme not in ('https','http') or origin.netloc!=request.url.netloc
+            or request.headers.get('sec-fetch-site') not in (None,'same-origin')):
+        raise HTTPException(403,'Origen de solicitud inválido')
 
 
 def token_for_file(key, identity, ident):
@@ -89,28 +97,32 @@ def photo_thumbnail(store,root,row,original):
 def create_media_router(store, root, key, team_auth):
     router=APIRouter(prefix=PREFIX)
 
-    def media_auth(sc_report_media: str = Cookie(default='')):
-        return session_identity(key,sc_report_media)
+    def media_auth(session: str = Cookie(default='',alias=COOKIE)):
+        return session_identity(key,session)
 
     @router.post('/session',dependencies=[Depends(team_auth)],status_code=204)
     def login():
         response=Response(status_code=204)
         response.set_cookie(COOKIE,new_session(key),max_age=SESSION_SECONDS,
-                            path=PREFIX,httponly=True,secure=True,samesite='strict')
+                            path='/',httponly=True,secure=True,samesite='strict')
         return response
 
     @router.delete('/session',status_code=204)
-    def logout():
+    def logout(request: Request):
+        require_same_origin(request)
         response=Response(status_code=204)
-        response.delete_cookie(COOKIE,path=PREFIX,httponly=True,secure=True,samesite='strict')
+        response.delete_cookie(COOKIE,path='/',httponly=True,secure=True,samesite='strict')
         return response
 
     @router.get('/records/{code}')
     def inventory(code: str,identity: str=Depends(media_auth)):
         try:
-            result=snapshot(store,root,public=True,evidence_code=code)
-        except ReportError as exc:
-            raise HTTPException(404,'Registro no disponible') from exc
+            result=snapshot(store,root,team=True,evidence_code=code)
+        except ReportError:
+            try:
+                result=snapshot(store,root,public=True,evidence_code=code)
+            except ReportError as exc:
+                raise HTTPException(404,'Registro no disponible') from exc
         for item in result['items']:
             proof=token_for_file(key,identity,item['id'])
             base=f'{PREFIX}/files/{item["id"]}'
@@ -142,11 +154,11 @@ def create_media_router(store, root, key, team_auth):
         if kind=='download':
             return FileResponse(original,filename=Path(row['original_name']).name,media_type='application/octet-stream')
         if kind=='content' and row['modality'] in ('audio','video'):
-            cached=contained(root,'derived/audio-v1/'+row['sha256']+'/mono-16000.wav')
-            source=cached if row['modality']=='audio' and cached.is_file() else original
-            media_type=mimetypes.guess_type(source.name)[0]
+            media_type=mimetypes.guess_type(row['original_name'])[0]
+            if not media_type and Path(row['original_name']).suffix.lower()=='.opus':
+                media_type='audio/ogg'
             if media_type and media_type.startswith(row['modality']+'/'):
-                return FileResponse(source,media_type=media_type,content_disposition_type='inline')
+                return FileResponse(original,media_type=media_type,content_disposition_type='inline')
         raise HTTPException(404,'Vista previa no disponible')
 
     return router

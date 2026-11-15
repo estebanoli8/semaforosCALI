@@ -2,3 +2,12 @@
 
 select,textarea{font:inherit;width:100%;max-width:100%;padding:10px;border:1px solid #acbbb4;border-radius:8px;background:white;color:var(--ink)}textarea{resize:vertical}#reviewWorkspace .inline{margin-top:14px}#reviewNotice:not(:empty){padding:10px;background:#fff6d8;border-radius:8px}input[type=checkbox]{width:20px;height:20px}#reviewWorkspace h3{margin-top:24px}
 .jobOrigin{display:block;font-weight:500;color:var(--muted);font-size:12px;max-width:280px}.jobProgress{min-width:125px}.jobProgress progress{margin:0;width:125px;height:9px}.jobProgress small{display:block}#overallProgress{margin-top:6px;max-width:600px;height:15px}.modelText{max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}#annotatedImage{display:block;max-width:min(100%,560px);max-height:450px;object-fit:contain;border:1px solid var(--line);border-radius:10px;margin:12px 0}#resultBox details{margin-top:16px}
+
+.team-brand { margin-bottom: 26px }
+.team-brand > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px }
+.team-brand h1 { margin-bottom: 4px; max-width: 800px }
+.team-brand img { display: block; object-fit: contain; max-width: 100% }
+.team-brand p { color: var(--muted) }
+.team-brand nav { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line) }
+.team-brand a { color: var(--green); padding: 8px 12px; border-bottom: 2px solid transparent; text-decoration: none }
+.team-brand a:hover, .team-brand a[aria-current] { border-color: var(--green); font-weight: 650 }

@@ -119,12 +119,17 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
     logo=Image(str(LOGO),width=84,height=34,kind='proportional')
     header=Table([[paragraph('Informe general de reportes','title'),logo]],colWidths=(402,102))
     header.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),0)]))
+    map_data=data['map']
+    summary=f'{len(data["items"])} reportes'
+    if map_data is not None:
+        summary+=f' · {len(map_data["markers"])} ubicados en el mapa'
     story=[header,Spacer(0,10),paragraph('Semáforos Cali · Registro ciudadano','subtitle'),
            paragraph(f'Generado: {formatted_date(generated)} | Corte: {formatted_date(data["cutoff"])}','small'),
-           paragraph(f'{len(data["items"])} reportes · {len(data["map"]["markers"])} ubicados en el mapa','body'),
-           Spacer(0,13),draw_map(data['map'],bool(data['boundary_version'])),Spacer(0,12),
-           paragraph('Registros y evidencias','subtitle'),
-           paragraph('Cada fila conserva el reporte ciudadano y su estado al corte. Los registros descartados se excluyen.','small')]
+           paragraph(summary)]
+    if map_data is not None:
+        story.extend([Spacer(0,13),draw_map(map_data,bool(data['boundary_version']))])
+    story.extend([Spacer(0,12),paragraph('Registros y evidencias','subtitle'),
+        paragraph('Cada fila conserva el reporte ciudadano y su estado al corte. Los registros descartados se excluyen.','small')])
     if expires_at:
         story.append(paragraph('Los enlaces a evidencias vencen el '+formatted_date(expires_at)+'.','small'))
     if not data['items']:
@@ -153,13 +158,13 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
     return buffer.getvalue()
 
 
-def make_export(store, root, key, include_links, origin=None):
+def make_export(store, root, key, include_links, origin=None, *, action_report=False):
     if include_links:
         base=urlsplit(origin or '')
         if base.scheme!='https' or not base.netloc or base.username or base.password or base.path not in ('','/') or base.query or base.fragment:
             raise ReportError('https_report_origin_required')
         origin=f'{base.scheme}://{base.netloc}'
-    data=snapshot(store,root)
+    data=snapshot(store,root,team=action_report,export=action_report)
     ident=uuid4()
     generated=datetime.now(BOGOTA)
     expires_at=generated+timedelta(days=LINK_DAYS) if include_links else None
@@ -183,7 +188,9 @@ def make_export(store, root, key, include_links, origin=None):
                 evidence_ids,evidence_expires_at,boundary_version)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(
                 ident,generated,data['cutoff'],SCHEMA_VERSION,relative,hashlib.sha256(pdf).hexdigest(),
-                Jsonb([{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} for r in data['items']]),
+                Jsonb([{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} if 'id' in r else
+                       {'code':r['code'],'date':r['date'].isoformat() if r['date'] else None,
+                        'intersection':r['intersection'],'description':r['description']} for r in data['items']]),
                 sorted({e['id'] for row in data['items'] for e in row['evidence']}) if include_links else [],
                 expires_at,data['boundary_version']))
     except Exception:

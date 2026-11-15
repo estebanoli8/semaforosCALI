@@ -4,13 +4,13 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reportes y mapa · Semáforos Cali</title>
   <link rel="stylesheet" href="/panel.css"><link rel="stylesheet" href="/reports.css">
-  <script defer src="/reports.js"></script>
+  <script defer src="/team.js"></script><script defer src="/reports.js"></script>
 </head>
 <body>
 <header><span class="mark" aria-hidden="true">● ● ●</span><span>SEMÁFOROS CALI</span><span id="audience" class="private">Reportes</span></header>
 <main>
   <div class="report-intro">
-    <nav class="inline" id="teamLinks" hidden><a href="/">Procesamiento</a><a href="/metricas">Métricas de modelos</a><a href="/semaforos">Vista pública</a></nav>
+
     <div class="report-brand"><h1>Reportes y mapa de Cali</h1>
       <img src="/marca-esteban.png" width="190" height="47" alt="Ingeniero Esteban Oli">
     </div>
@@ -28,15 +28,17 @@
   <section id="evidenceAccess" hidden>
     <div class="sectionTitle"><h2 id="evidenceTitle">Evidencias</h2><button class="secondary" id="evidenceLogout">Salir</button></div>
     <p id="evidenceScope" class="muted"></p>
+    <h3>Situación presentada</h3><p id="evidenceSituation"></p>
+    <label for="evidenceReviewer">Quién revisa</label><input id="evidenceReviewer" maxlength="100" placeholder="Equipo">
     <nav id="evidenceTypes" class="inline evidence-types" aria-label="Tipos de evidencia"></nav>
     <div id="evidenceFiles"></div>
-    <a href="/semaforos">Volver a la tabla pública</a>
+
   </section>
   <div id="reportWork" hidden>
     <div class="stats report-stats" id="reportStats"></div>
     <section id="pdfPanel" hidden>
       <div class="sectionTitle"><h2>Informe general</h2><button class="secondary" id="reportLogout">Salir</button></div>
-      <p>Genera un PDF fechado con el mapa del corte, las versiones y los reportes vigentes, incluidos los pendientes.</p>
+      <p>Genera un PDF fechado con los reportes vigentes, incluidos los pendientes.</p>
       <label class="check-label"><input type="checkbox" id="shareEvidence"> Incluir enlaces de evidencia válidos durante 7 días. Quien reciba el enlace podrá abrir el archivo vinculado.</label>
       <button id="exportPdf">Descargar informe PDF</button>
     </section>

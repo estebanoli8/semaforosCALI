@@ -204,7 +204,11 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(login.status_code,204)
             self.assertIn('HttpOnly',login.headers['set-cookie'])
             self.assertIn('Secure',login.headers['set-cookie'])
-            self.assertIn('Path=/report-media',login.headers['set-cookie'])
+            self.assertIn('Path=/',login.headers['set-cookie'])
+            self.assertEqual(browser.get('/team-session').status_code,200)
+            self.assertEqual(browser.get('/action-records').status_code,200)
+            self.assertEqual(browser.post('/report-exports',json={},
+                                          headers={'Origin':'https://invalid.example'}).status_code,403)
             media=browser.get(record).json()
             by_type={file['type']:file for file in media['items']}
             content=browser.get(by_type['chat']['content']).text
@@ -222,7 +226,7 @@ class ReportTests(unittest.TestCase):
                     r,_,b=thumbnail.getpixel((0,0))
                     self.assertEqual(r>b,want_annotation)
             self.assertEqual(browser.get(by_type['image']['thumbnail'][:-1]+'Z').status_code,404)
-            self.assertEqual(browser.delete('/report-media/session').status_code,204)
+            self.assertEqual(browser.delete('/report-media/session',headers={'Origin':'https://testserver'}).status_code,204)
             self.assertEqual(browser.get(by_type['chat']['content']).status_code,401)
 
 

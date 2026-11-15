@@ -14,10 +14,6 @@ NUMBERS.update(zip('primera segunda tercera cuarta quinta sexta septima octava n
 NUMBERS.update(un=1, una=1, cien=100, ciento=100)
 TENS = dict(zip('treinta cuarenta cincuenta sesenta setenta ochenta noventa'.split(), range(30, 100, 10)))
 NUMBER = r'(?:\d{1,3}|(?:ciento )?(?:' + '|'.join(TENS) + r')(?: y (?:' + '|'.join(NUMBER_WORDS[1:10]) + r'))?|'+ '|'.join(sorted(NUMBERS, key=len, reverse=True)) + r')'
-ROAD = r'(?:calle|carrera|avenida|diagonal|transversal|cra\.?|cl\.?|av\.?)'
-ROAD_NUMBER = NUMBER + r'(?:(?:[a-z]|\s+[a-z])(?!\w))?(?:\s+bis\b)?'
-INTERSECTION = re.compile(rf'\b(?P<a>{ROAD}\s+{ROAD_NUMBER}|(?:la\s+)?{NUMBER})\s+(?:con|esquina con|cruce con|y)\s+(?P<b>{ROAD}\s+{ROAD_NUMBER}|(?:la\s+)?{NUMBER})\b')
-STREET = re.compile(rf'\b{ROAD}\s+{ROAD_NUMBER}\b')
 DURATION = re.compile(rf'\b(?:{NUMBER}|varios?|varias?|muchos?|muchas?)\s+(?:dias?|semanas?|mes(?:es)?|horas?|años?)\b|\bdesde\s+(?:ayer|anoche|anteayer|el\s+(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b')
 COUNT = re.compile(rf'\b({NUMBER})\s+semaforos?\b')
 COORDINATE_PAIR = r'([+-]?\d{1,3}\.\d{3,})\s*[,;]\s*([+-]?\d{1,3}\.\d{3,})'
@@ -28,6 +24,10 @@ PATTERNS = {
     'riesgo_o_casi_accidente': r'\b(?:casi|por poco|a punto de|riesgo|peligro|posibles?|evitar|prevenir|puede[n]? (?:chocar|accidentarse)|podria[n]? (?:chocar|accidentarse))\b',
     'agentes_de_transito': r'\b(?:guardas?|agentes? de transito|policia de transito|autoridades? de transito|alfere[zc]\w*)\b',
     'regulacion_del_trafico': r'\b(?:regul\w*|dirig\w*|control\w*|organiz\w*|dando paso)\b.{0,45}\b(?:trafico|transito|paso|carros|vehiculos|movilidad)\b|\b(?:dando paso|paleter[oa]s?|banderiller[oa]s?|reguladores? viales?)\b',
+    'regulacion_informal': r'\b(?:pelad[oa]s?|muchach[oa]s?|joven(?:es)?|particular(?:es)?|vecin[oa]s?|personas?|ciudadan[oa]s?)\b.{0,55}\b(?:regul\w*|dirig\w*|control\w*|manej\w*|organiz\w*|dando paso)\b.{0,32}\b(?:trafico|transito|paso|carros|vehiculos)\b',
+    'desorden': r'\b(?:desorden|caos|anarquia|cruzan sin control|nadie da paso)\b',
+    'afectacion_peatonal': r'\b(?:peatones?|ciclistas?|niños?|adultos mayores|cruzar(?: la calle)?)\b.{0,38}\b(?:riesgo|miedo|peligro|dificil|no puede[n]?|atropell\w*)\b|\b(?:no puede[n]?|dificil|miedo de|peligro al)\s+cruzar\b',
+    'demora': r'\b(?:lleg[a-z]*\s+tarde|demoras?|perd[ei]\w*\s+tiempo|retrasos?)\b',
     'congestion': r'\b(?:trancon(?:es)?|congestion\w*|embotell\w*|atasco|trancado|trafico pesado)\b',
 }
 COMPILED = {key: re.compile(value) for key, value in PATTERNS.items()}
@@ -48,14 +48,6 @@ def number_value(text):
         tens, units = text.split(' y ', 1)
         return TENS[tens] + NUMBERS[units]
     return NUMBERS.get(text, TENS.get(text))
-
-
-def normalize_road(road):
-    road = re.sub(r'^la\s+', '', road)
-    road = re.sub(r'^(?:cra|cl|av)\.?\s+', lambda m: {
-        'cra': 'carrera ', 'cl': 'calle ', 'av': 'avenida '
-    }[m.group(0).strip().rstrip('.')], road)
-    return re.sub(rf'\b{NUMBER}\b', lambda m: str(number_value(m.group())), road)
 
 
 def gps_coordinates(text):
@@ -106,19 +98,8 @@ def report_context(text):
     # Remove map URLs from lexical analysis while keeping original character offsets.
     lexical = MAP_URL.sub(lambda match: ' ' * len(match.group()), text)
     normalized = folded(lexical)
-    locations = []
-    for match in INTERSECTION.finditer(normalized):
-        # An unlabelled pair needs a semáforo/crossing context and explicit "con".
-        sides = (match['a'], match['b'])
-        named = any(re.match(ROAD, side) for side in sides)
-        if named or (' con ' in match.group() and re.search(r'\b(?:semaforos?|cruce|esquina|interseccion)\b', normalized)):
-            label = ' con '.join(normalize_road(side) for side in sides)
-            locations.append({'label': label, 'literal': text[match.start():match.end()],
-                              'intersection': True, 'road_types_explicit': all(re.match(ROAD, side) for side in sides)})
-    if not locations:
-        for match in STREET.finditer(normalized):
-            locations.append({'label': normalize_road(match.group()), 'literal': text[match.start():match.end()],
-                              'intersection': False, 'road_types_explicit': True})
+    from .cali import locations as cali_locations
+    locations = cali_locations(lexical)
     mentions = []
     for sentence in re.finditer(r'[^.!?;\n]+[!?]?', normalized):
         part = sentence.group().strip()
@@ -212,11 +193,11 @@ def source_rows(connection, conversation_id=None):
         FROM latest_audio a LEFT JOIN LATERAL (
             SELECT CASE WHEN count(DISTINCT m.sender_visible)=1 AND count(*)=count(m.sender_visible)
                 THEN min(m.sender_visible) END AS sender,
-                bool_and(lower(btrim(m.sender_visible))='esteban oli') AS team_only,
+                array_agg(lower(btrim(m.sender_visible))) AS senders,
                 CASE WHEN count(DISTINCT m.id)=1 THEN min(m.sent_at) END AS sent_at
             FROM message_attachments ma JOIN messages m ON m.id=ma.message_id
             WHERE ma.state='linked' AND ma.evidence_id IN (a.id,a.parent_id)
-        ) linked ON true WHERE linked.team_only IS DISTINCT FROM true
+        ) linked ON true WHERE linked.senders IS NULL OR NOT linked.senders <@ ARRAY['esteban oli','esteban oli semaforos dañados','esteban oli semáforos dañados']::text[]
         """, {'cid': conversation_id})
 
 

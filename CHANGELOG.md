@@ -1,5 +1,11 @@
 # Historial
 
+## 2026-11-15 — Acción Popular
+
+- Sesión compartida de equipo, detalle en pestaña nueva, informe del mismo corte y evaluación por evidencia.
+- Normalización de vías de Cali, asociación de adjuntos a mensajes y síntesis con duraciones declaradas.
+- Perfil suave de audio y reproceso selectivo de chat y audio. Cartografía aplazada.
+
 ## 2026-11-08 — v0.8 consolidación asistida
 
 - Afirmaciones verificadas contra texto fuente, reutilizadas entre ejecuciones compatibles con referencias a cada predicción.

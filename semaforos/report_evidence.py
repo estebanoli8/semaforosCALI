@@ -11,7 +11,7 @@ def evidence_type(row):
     return row['modality']
 
 
-def attach_evidence(c, items, evidence_code=None):
+def attach_evidence(c, items, evidence_code=None, *, detail=False, export=False):
     if evidence_code is not None:
         items = [item for item in items if item['code']==evidence_code]
         if not items:
@@ -41,7 +41,8 @@ def attach_evidence(c, items, evidence_code=None):
 
     counted = {}
     for item in items:
-        inventory = inventories[item.pop('_conversation_id')]
+        conversation_id=item.pop('_conversation_id')
+        inventory = inventories[conversation_id]
         report_files = item.pop('_report_evidence_ids',None)
         source_ids = item.pop('_source_ids',[])
         scope = 'registro'
@@ -64,7 +65,16 @@ def attach_evidence(c, items, evidence_code=None):
         counted.update((row['id'],evidence_type(row)) for row in matching)
         item['evidence_counts']=counts
         item['evidence_scope']=scope
+        if export:
+            item['evidence']=[{'id':row['id'],'modality':evidence_type(row),'name':row['original_name']}
+                              for row in matching]
         if evidence_code is not None:
-            return {'scope':scope,'counts':counts,'intersection':item['intersection'],'items':[
+            result={'scope':scope,'counts':counts,'intersection':item['intersection'],'items':[
                 {'id':row['id'],'type':evidence_type(row),'name':row['original_name']} for row in matching]}
+            if detail:
+                from .source_detail import enrich
+                result.update(situacion_presentada=item.get('situacion_presentada') or item['description'],
+                              date=item['date'])
+                enrich(c,conversation_id,result['items'],inventory)
+            return result
     return dict(Counter(counted.values()))

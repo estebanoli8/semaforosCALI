@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .conversation_summary import gps_coordinates
 from .reports import ReportError, detail
-from .public_results import CROSSING, automatic_items
+from .public_results import CROSSING, automatic_items, source_features, situation_text
 from .report_evidence import attach_evidence
 
 CALI_EXTENT = (-76.62, 3.29, -76.44, 3.55)
@@ -167,8 +167,9 @@ WHERE r.revision<>'descartado'
 '''
 
 
-def snapshot(store, root, *, public=False, evidence_code=None):
-    polygons, boundary_version = boundary(root)
+def snapshot(store, root, *, public=False, evidence_code=None, team=False, export=False):
+    listing=public or team
+    polygons, boundary_version = ([], None) if team else boundary(root)
     items = []
     public_conversations = set()
     with store.connect() as c:
@@ -197,7 +198,14 @@ def snapshot(store, root, *, public=False, evidence_code=None):
             data={'code':report['code_display'],'date':report['report_date'],'intersection':title,
                   'description':description,'revision':report['revision_effective'],
                   'processing':report['processing_state'],'latitude':lat,'longitude':lon}
-            if public:
+            if team:
+                features=source_features({'text':'\n'.join(f['literal'] or '' for f in findings)},set())
+                description=situation_text(title,features['topics'],features['fault_types'],features['durations'],
+                    found_fault=any(f['variable']=='descripcion_dano' for f in findings))
+                data.update(description=description,situacion_presentada=description)
+                if export:
+                    data.update(id=report['id'],version=report['version'],map_version=location['map_version'] or 0)
+            if listing:
                 data.update(_public=True,_conversation_id=location['conversation_id'],
                             _report_evidence_ids=[e['id'] for e in report['evidence']])
                 published_ids.append(location['id'])
@@ -211,16 +219,19 @@ def snapshot(store, root, *, public=False, evidence_code=None):
                         for f in findings if f['variable']=='ubicacion' for x in gps_coordinates(f['literal'])],
                     evidence=[{'id':e['id'],'modality':e['modality'],'name':e['original_name']} for e in report['evidence']])
             items.append(data)
-        if public:
+        if listing:
             blocked = {row['source_id'] for row in c.execute('''
                 SELECT CASE WHEN f.origin='chat' THEN f.message_id ELSE f.evidence_id END AS source_id
                 FROM reports r JOIN report_findings rf ON rf.report_id=r.id JOIN findings f ON f.id=rf.finding_id
                 WHERE r.revision='descartado' OR r.id=ANY(%s::uuid[])
             ''',(published_ids,))}
             projected, conversations = automatic_items(c,blocked,points_allowed=bool(polygons))
+            if team:
+                for row in projected:
+                    row['description']=row['situacion_presentada']
             items.extend(projected)
             public_conversations.update(conversations)
-            evidence = attach_evidence(c,items,evidence_code)
+            evidence = attach_evidence(c,items,evidence_code,detail=team,export=export)
             if evidence_code is not None:
                 return evidence
 
@@ -230,16 +241,19 @@ def snapshot(store, root, *, public=False, evidence_code=None):
             return crossing_key(title)
         return None
 
-    if public:
+    if listing:
         items.sort(key=lambda row: (intersection_key(row) is not None,
                                     row['date'] is not None,row['date'],row['code']), reverse=True)
     keys=[intersection_key(row) for row in items]
     totals=Counter(key for key in keys if key is not None)
     for row,key in zip(items,keys):
         row['reports_at_intersection']=totals[key] if key else None
-    chart=build_map(items,polygons)
+    chart=None if team else build_map(items,polygons)
     response={'cutoff':cutoff,'items':items,'map':chart,'boundary_version':boundary_version}
-    if public:
+    if public and not team:
+        for item in items:
+            item.pop('situacion_presentada',None)
+    if listing:
         response['conversations_included']=len(public_conversations)
         response['totals']={'records':len(items),'crossings':len(totals),'photos':evidence.get('image',0),
                             'videos':evidence.get('video',0),'audios':evidence.get('audio',0)+evidence.get('audio_video',0),

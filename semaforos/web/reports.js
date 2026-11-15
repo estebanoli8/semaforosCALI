@@ -5,7 +5,8 @@ const team = location.pathname === '/reportes';
 const pageSize = 20;
 const params = new URLSearchParams(location.search);
 const selectedRecord = team ? params.get('registro') : null;
-const selectedType = params.get('tipo');
+const selectedType = params.get('tipo') === 'audio_video' ? 'video' : params.get('tipo');
+const locationEditor = team && params.has('ubicaciones') && !selectedRecord;
 const evidenceTypes = {
   audio:['audio de WhatsApp','audios de WhatsApp'],
   audio_video:['audio extraído de video','audios extraídos de video'],
@@ -19,7 +20,6 @@ const evidenceTypes = {
 const dateTime = new Intl.DateTimeFormat('es-CO', {dateStyle:'medium',timeStyle:'short',timeZone:'America/Bogota'});
 const states = {pendiente:'Revisión pendiente',revisado:'Revisado',completado:'Procesamiento completo',
   en_cola:'En cola',procesando:'Procesando',parcial_con_errores:'Procesamiento parcial'};
-let accessKey = '';
 let view = null;
 let selected = null;
 let request = null;
@@ -41,7 +41,6 @@ function formatDate(value) {
 }
 async function get(path, options = {}) {
   const headers = new Headers(options.headers);
-  if (team) headers.set('Authorization', 'Bearer ' + accessKey);
   const response = await fetch(path, {...options, headers, cache:'no-store'});
   if (response.status === 401) {
     logout();
@@ -113,7 +112,9 @@ function catalog(row) {
     const count=counts[key];
     const link=node('a',count+' '+labels[count===1?0:1]);
     link.href='/reportes?'+new URLSearchParams({registro:row.code,tipo:key});
-    link.title='Abrir el visor del equipo';
+    link.target='_blank';
+    link.rel='noopener noreferrer';
+    link.title='Abrir detalle en una pestaña nueva';
     entry.append(link);list.append(entry);
   }
   details.append(list);cell.append(details);
@@ -129,7 +130,7 @@ function renderRows() {
   const end = Math.min(matching.length,(page+1)*pageSize);
   for(const row of matching.slice(page*pageSize,end)) {
     const tr=node('tr');
-    if(team) {
+    if(locationEditor) {
       const code=node('td');
       const button=node('button',row.code);
       button.type='button';button.className='secondary';button.onclick=()=>edit(row);
@@ -151,9 +152,9 @@ function renderRows() {
       description.append(list);
     } else description.textContent=row.description||'Por consolidar';
     tr.append(node('td',formatDate(row.date)),node('td',row.intersection||'Por revisar'),description);
-    if(team) tr.append(node('td',[states[row.revision],states[row.processing]].filter(Boolean).join(' · ')));
+    if(locationEditor) tr.append(node('td',[states[row.revision],states[row.processing]].filter(Boolean).join(' · ')));
     tr.append(node('td',row.reports_at_intersection??'—'));
-    if(!team) tr.append(catalog(row));
+    if(!locationEditor) tr.append(catalog(row));
     rows.append(tr);
   }
   byId('reportEmpty').textContent=matching.length?'':'Aún no hay reportes para mostrar con esta selección.';
@@ -168,7 +169,7 @@ function render() {
   const latest = view.items.reduce((date,row)=>row.date && (!date || new Date(row.date)>new Date(date))?row.date:date,null);
   const total=view.totals||{};
   const conversations=view.conversations_included??0;
-  const statsItems = team ? [['Reportes del corte',view.items.length],
+  const statsItems = locationEditor ? [['Reportes del corte',view.items.length],
     ['Reportes ubicados',view.map.markers.length],['Último registro',formatDate(latest)]] :
     [['Reportes',total.records??view.items.length,conversations+(conversations===1?' conversación incluida':' conversaciones incluidas')],
      ['Fotos',total.photos??0],['Videos',total.videos??0],
@@ -181,9 +182,12 @@ function render() {
     stats.append(card);
   }
   byId('mapSelection').textContent='';
-  drawMap(view);
-  if(team || view.map.markers.length) byId('recordsPanel').before(byId('mapPanel'));
-  else byId('recordsPanel').after(byId('mapPanel'));
+  byId('mapPanel').hidden=team && !locationEditor;
+  if(!byId('mapPanel').hidden) {
+    drawMap(view);
+    if(locationEditor || view.map.markers.length) byId('recordsPanel').before(byId('mapPanel'));
+    else byId('recordsPanel').after(byId('mapPanel'));
+  }
   renderRows();
 }
 function playable(file) {
@@ -241,11 +245,99 @@ function chatPreview(file, open) {
   details.open=open;
   return details;
 }
+const modelStates = {
+  pending:'Pendiente de procesamiento', running:'Modelo en ejecución',
+  failed:'Falló el modelo', partial:'La extracción produjo resultados parciales',
+  absent:'No hay una ejecución registrada para esta evidencia',
+  no_audio:'El video no tiene una pista de audio disponible'
+};
+const variables = {
+  ubicacion:'Ubicación', descripcion_dano:'Daño descrito',
+  tiempo_sin_funcionar:'Duración mencionada', afectaciones:'Afectaciones'
+};
+function reviewForm(result, frame) {
+  const form=node('form');
+  form.className='evidence-review';
+  const stored=result.review;
+  const inputs=[];
+  for(const [name,label] of frame ? [['observed','Observados'],['detected','Detectados']] :
+    [['location','Detectó ubicación']]) {
+    const field=node('input');
+    const wrapper=node('label');
+    field.name=name;
+    field.type=frame?'number':'checkbox';
+    if(frame) {
+      field.min=0;field.max=1000;field.step=1;field.required=true;
+      field.value=stored?.[name]??'';
+      wrapper.append(label,field);
+    } else {
+      field.checked=stored===true;
+      wrapper.append(field,label);
+    }
+    inputs.push(field);
+    form.append(wrapper);
+  }
+  const save=node('button','Guardar evaluación');
+  save.type='submit';
+  const status=node('small',stored==null?'Sin evaluación guardada':'Evaluación guardada');
+  status.setAttribute('role','status');
+  form.append(save,status);
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    save.disabled=true;
+    const label=frame?Object.fromEntries(inputs.map(input=>[input.name,input.valueAsNumber])):inputs[0].checked;
+    try {
+      await get('/reviews',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({run_id:result.run_id,field:frame?'frame_counts':'location_detected',
+          label,reviewer:byId('evidenceReviewer').value.trim()||'Equipo'})});
+      status.textContent='Evaluación guardada';
+    } catch(error) {status.textContent=error.message;}
+    finally {save.disabled=false;}
+  };
+  return form;
+}
+function showModel(card, result, kind) {
+  if(!result)return;
+  const title=kind==='chat'?'Interpretación de chat TXT':
+    kind==='video'?'Transcripción del audio extraído del video':
+    kind==='frame'?'Evaluación del fotograma':'Transcripción del audio de WhatsApp';
+  card.append(node('h5',title));
+  if(result.state!=='completed') {
+    const status=node('p',(modelStates[result.state]||'Sin salida')+(result.error?' · '+result.error:''));
+    status.className='muted';
+    card.append(status);
+  }
+  if(kind==='chat') {
+    for(const summary of result.summaries||[])card.append(node('p',summary));
+    const assertions=node('dl');
+    for(const item of result.assertions||[]) {
+      assertions.append(node('dt',variables[item.variable]||item.variable),
+        node('dd',[item.interpretation,item.literal].filter((value,index,list)=>value && list.indexOf(value)===index).join(' · ')));
+    }
+    if(assertions.children.length)card.append(assertions);
+    if(result.state==='completed'&&!result.summaries?.length&&!result.assertions?.length)
+      card.append(node('p','El modelo terminó sin hallazgos.'));
+  } else if(kind==='frame') {
+    if(result.automatic_count!==undefined)card.append(node('small','Cajas del modelo: '+result.automatic_count));
+  } else if(result.state==='completed') {
+    const transcript=node('p',result.text||'No se detectó habla para transcribir.');
+    transcript.className='evidence-transcript';
+    card.append(transcript);
+  }
+  if(result.run_id)card.append(reviewForm(result,kind==='frame'));
+}
 function evidenceCard(file) {
   const card=node('article');
   card.className='evidence-card';
-  const title=node('h4',file.name);
-  card.append(title);
+  const local=['image','video','frame'].includes(file.type);
+  card.append(node('h4',local?(file.crossing||'Cruce por identificar'):file.name));
+  if(local)card.append(node('small',file.name));
+  if(file.sent_at)card.append(node('p','Enviado '+formatDate(file.sent_at)));
+  if(local && file.crossing_source) {
+    const source=node('small','Ubicación asociada por '+file.crossing_source+
+      (file.crossing_time?' · '+formatDate(file.crossing_time):''));
+    card.append(source);
+  }
   if(file.thumbnail) {
     const thumb=node('img');
     thumb.src=file.thumbnail;
@@ -256,8 +348,10 @@ function evidenceCard(file) {
     });
     card.append(thumb);
   }
-  if(['audio','audio_video','video'].includes(file.type))card.append(playable(file));
+  if(['audio','video'].includes(file.type))card.append(playable(file));
   if(file.type==='chat')card.append(chatPreview(file,selectedType==='chat'));
+  if(['chat','frame','audio','video'].includes(file.type))
+    showModel(card,file.type==='video'?file.transcription:file.analysis,file.type);
   const link=node('a','Descargar original');
   link.href=file.download;
   link.download=file.name;
@@ -266,10 +360,13 @@ function evidenceCard(file) {
 }
 function renderEvidence(data) {
   byId('evidenceTitle').textContent=data.intersection?'Evidencias · '+data.intersection:'Evidencias del reporte';
-  byId('evidenceScope').textContent=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
+  const scope=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
+  byId('evidenceScope').textContent=data.date?scope+' · '+formatDate(data.date):scope;
+  byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
   const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
   list.replaceChildren();nav.replaceChildren();
   for(const [type,labels] of Object.entries(evidenceTypes)) {
+    if(type==='audio_video')continue;
     const files=data.items.filter(item=>item.type===type);
     if(!files.length)continue;
     const title=files.length+' '+labels[files.length===1?0:1];
@@ -319,7 +416,7 @@ async function load() {
   if(selectedRecord)return loadEvidence(current.signal);
   byId('reportStatus').textContent='Consultando reportes…';
   try {
-    const response=await get(team?'/report-map':'/semaforos/datos',{signal:current.signal});
+    const response=await get(locationEditor?'/report-map':team?'/action-records':'/semaforos/datos',{signal:current.signal});
     const data=await response.json();
     if(request!==current)return;
     view=data;page=0;
@@ -327,7 +424,9 @@ async function load() {
     byId('reportWork').hidden=false;
     byId('pdfPanel').hidden=!team;
     byId('reportLogin').hidden=true;
-    byId('reportStatus').textContent='Corte '+formatDate(view.cutoff)+' · hora de Cali';
+    byId('reportStatus').textContent=params.has('detalle')
+      ?'Selecciona una evidencia del reporte que quieras abrir.'
+      :'Corte '+formatDate(view.cutoff)+' · hora de Cali';
   } catch(error) {
     if(error.name!=='AbortError')byId('reportStatus').textContent=error.message;
   }
@@ -377,7 +476,7 @@ function edit(row) {
   byId('editPanel').scrollIntoView({block:'start'});
 }
 function logout() {
-  request?.abort();request=null;accessKey='';view=null;selected=null;
+  request?.abort();request=null;view=null;selected=null;
   byId('evidenceAccess').hidden=true;byId('evidenceFiles').replaceChildren();byId('evidenceTypes').replaceChildren();
   byId('reportWork').hidden=true;byId('editPanel').hidden=true;byId('reportLogin').hidden=false;
   for(const id of ['reportStats','reportRows','reportMap','reportEvidence','coordinateCandidates'])byId(id).replaceChildren();
@@ -389,20 +488,19 @@ function logout() {
 byId('audience').textContent=team?'Acceso privado':'Consulta pública';
 byId('reportLogin').hidden=!team;
 byId('preliminaryNote').hidden=team;
-byId('recordCodeHeader').hidden=!team;
-byId('recordStateHeader').hidden=!team;
-byId('recordEvidenceHeader').hidden=team;
-byId('crossingCountNote').hidden=team;
-if(!team) {
+byId('recordCodeHeader').hidden=!locationEditor;
+byId('recordStateHeader').hidden=!locationEditor;
+byId('recordEvidenceHeader').hidden=locationEditor;
+byId('crossingCountNote').hidden=locationEditor;
+if(!locationEditor) {
   byId('reportIntro').textContent='Consulta los cruces y las evidencias disponibles en los reportes ciudadanos.';
   byId('reportSearch').labels[0].textContent='Buscar por cruce';
   byId('reportSearch').placeholder='Calle o carrera';
 }
-byId('teamLinks').hidden=!team;
 byId('updateRecords').onclick=load;
 async function signOut() {
-  logout();
-  await fetch('/report-media/session',{method:'DELETE',cache:'no-store'}).catch(()=>{});
+  try {await teamSession.close();logout();}
+  catch(error) {byId('reportStatus').textContent=error.message;}
 }
 byId('evidenceLogout').onclick=signOut;
 byId('reportSearch').oninput=()=>{page=0;renderRows();};
@@ -411,10 +509,10 @@ byId('nextReport').onclick=()=>{page++;renderRows();};
 byId('reportLogout').onclick=signOut;
 byId('reportLoginForm').onsubmit=async event=>{
   event.preventDefault();
-  accessKey=byId('reportKey').value;
+  const key=byId('reportKey').value;
   byId('reportKey').value='';
   try {
-    await get('/report-media/session',{method:'POST'});
+    await teamSession.open(key);
     await load();
   } catch(error) {
     byId('reportStatus').textContent=error.message;
@@ -443,11 +541,12 @@ byId('exportPdf').onclick=async()=>{
   byId('reportStatus').textContent='Generando informe…';
   try {
     const response=await get('/report-exports',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({share_evidence:byId('shareEvidence').checked})});
+      body:JSON.stringify({share_evidence:byId('shareEvidence').checked,action_report:!locationEditor})});
     const ident=response.headers.get('X-Report-Export-ID');
     download(await response.blob(),'semaforos-cali-'+ident+'.pdf');
     byId('reportStatus').textContent='Informe generado · '+ident;
   } catch(error) {byId('reportStatus').textContent=error.message;}
   finally {button.disabled=false;}
 };
-if(!team || selectedRecord)load();
+if(!team)load();
+else teamSession.active().then(active=>{if(active)load();});

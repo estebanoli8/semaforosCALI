@@ -2,6 +2,7 @@
   "schema_version": 1,
   "whatsapp": {"date_order": "DMY", "timezone": "America/Bogota", "two_digit_century": 2000},
   "audio": {
+    "preprocessing": "voice-v2",
     "repository": "Systran/faster-whisper-small",
     "revision": "main",
     "language": "es",

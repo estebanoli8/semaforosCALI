@@ -4,15 +4,12 @@ from collections import defaultdict
 from zoneinfo import ZoneInfo
 
 from .conversation_summary import folded, report_context, source_rows
+from .cali import ANY_ROAD, CROSSING
 from .files import canonical_hash
 from .findings import ACTIVE_FINDING
 from .messages import is_team_sender
 
 CALI = ZoneInfo('America/Bogota')
-# Generated crossing strings have two explicit road names and short road numbers.
-ROAD = r'(?:calle|carrera|avenida|diagonal|transversal) \d{1,3}(?: ?[a-z])?(?: bis)?'
-CROSSING = re.compile(rf'{ROAD} con {ROAD}')
-NAMED_ROAD = re.compile(ROAD)
 SIGNAL_GPS = re.compile(
     r'\b(?:gps|coordenadas?|ubicacion|localizacion)\s+(?:(?:exact[ao]s?|reportad[ao]s?)\s+)?'
     r'de(?:l| la)\s+(?:semaforo|cruce|interseccion)\b'
@@ -24,6 +21,10 @@ PUBLIC_TOPICS = {
     'agentes_de_transito': 'Mención de agentes de tránsito',
     'regulacion_del_trafico': 'Mención de personas regulando el tráfico',
     'congestion': 'Congestión mencionada',
+    'regulacion_informal':'Regulación informal del tránsito',
+    'desorden':'Desorden vial',
+    'afectacion_peatonal':'Dificultad para cruzar',
+    'demora':'Demoras relatadas',
     'miedo': 'Miedo expresado',
     'frustracion': 'Frustración o molestia expresada',
 }
@@ -31,6 +32,7 @@ FAULT_TYPES = {
     'apagado': r'\b(?:apag\w*|no prende[n]?|sin luces?)\b',
     'intermitencia': r'\bintermiten\w*\b',
     'falta de sincronización': r'\b(?:desincroniz\w*|sin sincron\w*)\b',
+    'falla parcial de una luz': r'\b(?:rojo|verde|amarill[oa]|flecha|bombill[oa])\b.{0,28}\b(?:no funciona|no prende|no se ve)\b',
     'fuera de servicio': r'\b(?:fuera de servicio|sin funcionar|no funciona[n]?)\b',
 }
 MODALITIES = {'chat':'texto','audio_whatsapp':'audio de WhatsApp','audio_video':'audio de video'}
@@ -72,7 +74,7 @@ def self_reported(text, expression):
 def source_features(source, findings):
     context = report_context(source['text'])
     locations = {item['label'] for item in context['locations']
-                 if CROSSING.fullmatch(item['label']) or NAMED_ROAD.fullmatch(item['label'])}
+                 if CROSSING.fullmatch(item['label']) or ANY_ROAD.fullmatch(item['label'])}
     locations = {' con '.join(sorted(place.split(' con '))) if CROSSING.fullmatch(place) else place
                  for place in locations}
     # A GPS pin from an attachment, device position or isolated map link may be private.
@@ -99,6 +101,25 @@ def source_features(source, findings):
     return {'locations':locations,'point':point,'topics':topics,'durations':durations,
             'findings':findings,'fault_types':fault_types,'quantities':context['quantities'],
             'signal_mention':context['traffic_signal_mentioned']}
+
+
+def situation_text(location, topics, fault_types, durations, *, found_fault=False):
+    from .situation import synthesize
+    return synthesize(location,topics,fault_types,durations,found_fault=found_fault)
+
+
+def scoped_sources(source):
+    """Retain individual claims on lines that name different intersections."""
+    lines = source['text'].splitlines()
+    if len(lines)<2:
+        return [source]
+    # Keep date, sender and exact source ID so linked files are still traceable.
+    candidates = [dict(source,text=line) for line in lines if line.strip()]
+    crossings = [{p['label'] for p in report_context(row['text'])['locations'] if p['intersection']}
+                 for row in candidates]
+    if len(set().union(*crossings))>1:
+        return candidates
+    return [source]
 
 
 def make_item(conversation_id, source_group, day, location, values, processing, *, points_allowed):
@@ -129,7 +150,8 @@ def make_item(conversation_id, source_group, day, location, values, processing, 
     points = {features['point'] for _,features in values if features['point']}
     lat,lon = next(iter(points)) if points_allowed and len(points)==1 else (None,None)
     code = canonical_hash([str(conversation_id),source_group,str(day),location])[:16].upper()
-    return {'code':'P-'+code,'date':min(dates) if dates else None,'intersection':location,
+    situation=situation_text(location,topics,fault_types,durations,found_fault='descripcion_dano' in findings)
+    return {'code':'P-'+code,'situacion_presentada':situation,'date':min(dates) if dates else None,'intersection':location,
             'description': ' · '.join(descriptions), 'revision':'pendiente',
             'processing':'procesando' if processing['running'] else 'en_cola' if processing['pending'] else
                           'parcial_con_errores' if processing['errors'] else 'completado',
@@ -156,9 +178,10 @@ def automatic_items(c, blocked_sources, *, points_allowed):
             continue
         if not source['text'].strip():
             continue
-        features = source_features(source,findings[source['id']])
         day = source['sent_at'].astimezone(CALI).date() if source['sent_at'] else None
-        grouped[conv,source['sender'],day].append((source,features))
+        for fragment in scoped_sources(source):
+            features = source_features(fragment,findings[source['id']])
+            grouped[conv,source['sender'],day].append((fragment,features))
 
     result = []
     visible_conversations = set()
