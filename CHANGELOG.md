@@ -1,5 +1,10 @@
 # Historial
 
+## 2026-11-16 — GPS clicable y piloto de cinco conversaciones
+
+- El detalle abre las coordenadas reconocidas en Google Maps y aumenta el tamaño del cruce y la fecha.
+- El comando de piloto elige hasta cinco conversaciones de la base y encola solo Qwen con identificadores de caso. Las llamadas posteriores conservan la selección encolada.
+
 ## 2026-11-16 — Filtro del remitente y detalle legible
 
 - El lector reconoce los alias del equipo con variantes de tildes y espacios. El ejecutor vuelve a comprobar los remitentes de trabajos antiguos antes de enviar texto a Qwen o audio al transcriptor.

@@ -134,6 +134,22 @@ function dateLabel(value) {
 function dateRange(from,to) {
   return from?dateLabel(from)+' – '+dateLabel(to):dateLabel(null);
 }
+function appendFindingLiteral(line, literal, pins) {
+  const matches=pins.map(pin=>({pin,index:literal.indexOf(pin.literal)}))
+    .filter(({pin,index})=>index>=0 && pin.literal).sort((a,b)=>a.index-b.index);
+  let offset=0;
+  for(const {pin,index} of matches) {
+    if(index<offset || !Number.isFinite(pin.latitude) || !Number.isFinite(pin.longitude) ||
+        Math.abs(pin.latitude)>90 || Math.abs(pin.longitude)>180)continue;
+    const link=node('a',pin.literal);
+    link.href='https://maps.google.com/?q='+pin.latitude+','+pin.longitude;
+    link.target='_blank';
+    link.rel='noopener noreferrer';
+    line.append(document.createTextNode(literal.slice(offset,index)),link);
+    offset=index+pin.literal.length;
+  }
+  line.append(document.createTextNode(literal.slice(offset)));
+}
 function episodeDescription(episodes, state, showLocation=true) {
   const box=node('div');
   const pending=state==='pending';
@@ -162,7 +178,8 @@ function episodeDescription(episodes, state, showLocation=true) {
         if(seen.has(identity))continue;
         seen.add(identity);
         const metadata=[sources[hit.origin],hit.code==='T'&&hit.date?'Mensaje del '+dateLabel(hit.date):null].filter(Boolean);
-        const line=node('p',literal);
+        const line=node('p');
+        appendFindingLiteral(line,literal,hit.gps||[]);
         if(metadata.length)line.append(node('small',' — '+metadata.join(' · ')));
         findings.append(line);
       }

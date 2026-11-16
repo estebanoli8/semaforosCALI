@@ -19,9 +19,9 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 
 ## Detalle de reporte y piloto Qwen
 
-- **Detalle de reporte** empieza con los nombres o números de los ZIP cerrados. Al abrir un nombre aparecen sus ubicaciones. Al abrir un reporte se ven los hallazgos y sus enlaces. Cada texto se muestra una vez con su fuente en letra pequeña. Las categorías sin hallazgos se omiten en la vista. Los archivos con vínculo indeterminado quedan accesibles desde la conversación. El PDF muestra el nombre, los cruces y sus enlaces por archivo. [Uso y alcance](docs/detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf).
+- **Detalle de reporte** empieza con los nombres o números de los ZIP cerrados. Al abrir un nombre aparecen sus ubicaciones. Al abrir un reporte se ven los hallazgos y sus enlaces. Cada texto se muestra una vez con su fuente en letra pequeña. Las categorías sin hallazgos se omiten en la vista. El cruce y la fecha usan una letra 20 % mayor. Las coordenadas reconocidas abren Google Maps. Los archivos con vínculo indeterminado quedan accesibles desde la conversación. El PDF muestra el nombre, los cruces y sus enlaces por archivo. [Uso y alcance](docs/detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf).
 - El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. Los resultados de inferencia medidos en el VPS aparecen en el corte del piloto. Los conteos cubren entrada, no reintentos.
-- [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
+- [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). El [piloto de cinco conversaciones](docs/detalle_qwen.md#piloto-de-cinco-conversaciones) selecciona casos de la base y crea una tanda separada para Qwen. [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
 
 ## Flujo y modelos
 

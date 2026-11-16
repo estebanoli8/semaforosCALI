@@ -13,22 +13,34 @@ from .worker import text_chunks
 
 PILOT='detalle-qwen-v3'
 HISTORY='detalle-qwen-v3-historico'
+FIVE='detalle-qwen-v3-piloto-cinco'
 
 
-def prepare(store, config, *, apply=False, historical=False, conversation=None):
+def prepare(store, config, *, apply=False, historical=False, conversation=None, pilot_five=False):
     if config['text'].get('extraction')!='compact-v1':
         raise ValueError('La configuración debe activar compact-v1')
-    experiment=HISTORY if historical else PILOT
+    historical=historical or pilot_five
+    experiment=FIVE if pilot_five else HISTORY if historical else PILOT
+    selection=None
+    pilot_cases={}
+    scope=[conversation] if conversation is not None else None
     counts=Counter()
     with store.connect() as db:
         if apply and not db.execute('SELECT pg_try_advisory_xact_lock(%s) AS locked',(LOCK_KEY,)).fetchone()['locked']:
             raise RuntimeError('Hay un trabajador activo. Pausa el procesamiento y vuelve a ejecutar el comando.')
+        if pilot_five:
+            from .pilot import select_five
+            selected,missing=select_five(db,experiment)
+            scope=[item['conversation_id'] for item in selected]
+            pilot_cases={item['conversation_id']:item['caso'] for item in selected}
+            selection={'seleccion':[dict(item,conversation_id=str(item['conversation_id'])) for item in selected],
+                       'casos_sin_candidato_distinto':missing}
         if historical:
             chats=db.execute("""
                 SELECT e.id AS evidence_id,e.conversation_id FROM source_texts s
                 JOIN evidence e ON e.id=s.evidence_id
-                WHERE (%s::uuid IS NULL OR e.conversation_id=%s)
-            """,(conversation,conversation)).fetchall()
+                WHERE (%s::uuid[] IS NULL OR e.conversation_id=ANY(%s))
+            """,(scope,scope)).fetchall()
             existing=[]
         else:
             existing=db.execute("""
@@ -36,9 +48,9 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None):
                 WHERE (j.state='pending' OR (j.state='running' AND j.lease_until<now())) AND j.stage IN ('text','audio','video')
                   AND j.config->'text'->>'extraction' IS DISTINCT FROM 'compact-v1'
                   AND NOT (j.payload ? 'superseded_by_review')
-                  AND (%s::uuid IS NULL OR e.conversation_id=%s)
+                  AND (%s::uuid[] IS NULL OR e.conversation_id=ANY(%s))
                 ORDER BY j.created_at
-            """,(conversation,conversation)).fetchall()
+            """,(scope,scope)).fetchall()
             chats=list({r['evidence_id']:r for r in existing if r['stage']=='text' and r['modality']=='chat'}.values())
         counts['conversations']=len({r['conversation_id'] for r in chats+existing})
         counts['pending_jobs']=len(existing)
@@ -58,7 +70,10 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None):
         if apply:
             for chat in chats:
                 for sources in chat_sources(store,chat['evidence_id'],config):
-                    store.enqueue(chat['evidence_id'],'text',experiment,config,{'sources':sources},connection=db)
+                    payload={'sources':sources}
+                    if pilot_five:
+                        payload['pilot_case']=pilot_cases[chat['conversation_id']]
+                    store.enqueue(chat['evidence_id'],'text',experiment,config,payload,connection=db)
                     counts['chat_batches']+=1
             for job in existing:
                 if job['stage']!='text' or job['modality']!='chat':
@@ -81,9 +96,9 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None):
                     ORDER BY created_at DESC,id DESC LIMIT 1
                 ) v ON true
                 WHERE r.state='completed' AND NOT (r.output ? 'excluded')
-                  AND (%s::uuid IS NULL OR e.conversation_id=%s)
+                  AND (%s::uuid[] IS NULL OR e.conversation_id=ANY(%s))
                 ORDER BY e.id,(v.id IS NOT NULL) DESC,r.finished_at DESC NULLS LAST,r.id DESC
-            """,(conversation,conversation)).fetchall()
+            """,(scope,scope)).fetchall()
             counts['conversations']=len({r['conversation_id'] for r in chats+audios})
             for audio in audios:
                 if team_audio(store,audio['id']):
@@ -100,21 +115,27 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None):
                     for part in parts:
                         for batch in text_chunks(part['text'],audio['run_id'],origin,part['offset']):
                             payload={'sources':batch,'transcription_run_id':str(audio['run_id'])}
+                            if pilot_five:
+                                payload['pilot_case']=pilot_cases[audio['conversation_id']]
                             if audio['review_id']:
                                 payload['transcription_review_id']=str(audio['review_id'])
                             store.enqueue(audio['id'],'text',experiment,config,payload,connection=db)
                             counts['audio_batches']+=1
-    return {'mode':'aplicado' if apply else 'estimación','experiment':experiment,**counts}
+    return {'mode':'aplicado' if apply else 'estimación','experiment':experiment,**counts,**(selection or {})}
 
 
 def main():
     cli=argparse.ArgumentParser(description=__doc__)
     cli.add_argument('--apply',action='store_true')
-    cli.add_argument('--historico',action='store_true')
+    mode=cli.add_mutually_exclusive_group()
+    mode.add_argument('--historico',action='store_true')
+    mode.add_argument('--piloto-cinco',action='store_true',help='selecciona cinco casos distintos del histórico')
     cli.add_argument('--conversation',type=UUID)
     args=cli.parse_args()
+    if args.piloto_cinco and args.conversation:
+        cli.error('--piloto-cinco ya selecciona las conversaciones')
     print(json.dumps(prepare(Store(),load_config(),apply=args.apply,historical=args.historico,
-                             conversation=args.conversation),ensure_ascii=False))
+                             conversation=args.conversation,pilot_five=args.piloto_cinco),ensure_ascii=False))
 
 
 if __name__=='__main__':

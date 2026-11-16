@@ -129,6 +129,9 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
         if key in seen:
             continue
         seen.add(key)
+        coordinates=gps_coordinates(row['literal'])
+        if coordinates:
+            row['gps']=coordinates
         group['fields'][TAGS[tag][1]].append(row)
     for place,group in result.items():
         group['evidence_ids']=linked[place]
