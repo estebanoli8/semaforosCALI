@@ -14,6 +14,8 @@ La descripción se compone con afirmaciones de Qwen y referencias locales de fue
 
 **Descargar informe PDF** agrupa las filas por ciudadano. Cada fila contiene el cruce, la fecha abreviada y **Ver evidencias**. El enlace dura siete días y abre una vista de consulta con los archivos de la conversación registrados en ese corte. La vista de edición y evaluación requiere sesión de equipo. Si Easypanel pasa la petición al contenedor por HTTP, el exportador usa el origen HTTPS del navegador si coincide con el dominio de la petición. `SC_REPORT_ORIGIN` permite fijar el dominio.
 
+Desde el 16 de noviembre de 2026, los PDF nuevos usan un enlace firmado con el corte y la conversación en la ruta. El visor consulta los IDs de evidencia guardados al exportar, de modo que procesar un reporte de nuevo no cambia qué archivos autoriza el enlace. Los nombres de los ciudadanos se muestran sin marcas invisibles de dirección de texto de WhatsApp. La copia original conserva esas marcas. El PDF se descarga con el nombre `Accion Popular Semaforos Cali NOV 16 2026 08-34-06.pdf` para una exportación a esa hora en Colombia. Volver a descargar el mismo corte conserva su nombre.
+
 Las fichas de evidencia muestran el cruce y, cuando está disponible, la procedencia y hora de la asociación. El nombre del archivo queda disponible al descargarlo. En las evaluaciones, el botón cambia de color al guardar.
 
 El cambio usa salidas existentes y entra en vigor después de desplegar la versión que lo contiene. No requiere cargar los ZIP de nuevo ni reprocesar los modelos.
@@ -48,6 +50,18 @@ El **15 de noviembre de 2026**, el análisis local de **22 TXT únicos** produjo
 4. Restablece `SC_PROCESS=all` o levanta el worker separado. En **Desempeño de modelos**, filtra `detalle-qwen-v3` y registra total de conversaciones procesadas, mediana y p90 del tiempo acumulado de las llamadas, tokens y truncamientos. Para comparar velocidad, coteja la misma evidencia en ambos perfiles, con el mismo modelo y cuota de Ollama. Revisa manualmente duración de la falla, reparaciones seguidas de recaídas, negaciones de gestión y cruces ambiguos. Los indicadores del panel no incluyen tiempo de espera de la cola.
 
 Tras cotejar el piloto, se puede estimar un reproceso histórico de texto con `/usr/local/bin/python -m semaforos.optimize_queue --historico`. Agrega `--apply` con los workers pausados para encolar `detalle-qwen-v3-historico`. Reutiliza transcripciones, incluidas correcciones guardadas. Las tareas de imágenes y video se generan durante la carga normal.
+
+### Reprocesar el lote histórico completo
+
+Despliega el código en Easypanel con `SC_PROCESS=all` en `semaforos-core` si el servicio ejecuta la API y sus trabajadores. En la terminal de ese servicio, en `/app`, ejecuta:
+
+```bash
+/usr/local/bin/python -m semaforos.optimize_queue --historico --experimento detalle-qwen-arquitectura-20261116 --apply
+```
+
+El reproceso identificado se puede preparar con los trabajadores activos. El comando prepara tareas de Qwen con el perfil `compact-v1` a partir de los chats ya importados y las transcripciones disponibles de audio de WhatsApp y de video. Reutiliza las correcciones humanas y la evidencia visual ya generada. Al aplicar, `queued_conversations` y `batch_jobs` cuentan conversaciones con tareas y tareas preparadas, respectivamente. Volver a pasar el mismo nombre reutiliza tareas con los mismos insumos y configuración. Las conversaciones que siguen en recepción o importación quedan elegibles al terminar su ingreso. Una fuente sin transcripción disponible solo aporta cuando exista esa transcripción.
+
+En **Desempeño de modelos**, filtra el identificador del lote para revisar las ejecuciones de Qwen. Abre `/reportes?experimento=detalle-qwen-arquitectura-20261116` para ver y descargar los hallazgos de daño, gestión, peligro y ubicación de ese lote. El filtro se mantiene al abrir evidencias privadas. Los trabajos pendientes, fallidos y las conversaciones sin tareas se pueden distinguir del análisis completado. La síntesis ignora la línea de crédito de subtítulos de Amara.org cuando el modelo la clasifica como ubicación. Las evaluaciones de la nueva ejecución se vinculan a sus propias salidas.
 
 ## Piloto de cinco conversaciones
 

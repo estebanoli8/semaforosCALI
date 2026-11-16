@@ -19,6 +19,7 @@ from PIL import Image, ImageOps
 from .files import contained
 from .report_map import snapshot
 from .reports import ReportError
+from .config import EXPERIMENT_PATTERN
 
 COOKIE = 'sc_team_session'
 PREFIX = '/report-media'
@@ -162,10 +163,11 @@ def create_media_router(store, root, key, team_auth):
 
     @router.get('/conversations/{ident}')
     def citizen_inventory(ident: UUID,episodio: str | None=Query(None,pattern=r'^[a-f0-9]{16}$'),
+                          experimento: str | None=Query(None,pattern=EXPERIMENT_PATTERN),
                           identity: str=Depends(media_auth)):
         from .detailed import conversation_evidence
         try:
-            return signed_inventory(conversation_evidence(store,ident,episodio),identity)
+            return signed_inventory(conversation_evidence(store,ident,episodio,experiment=experimento),identity)
         except ReportError as exc:
             raise HTTPException(404,'Conversación no disponible') from exc
 
@@ -184,15 +186,15 @@ def create_media_router(store, root, key, team_auth):
     @router.get('/informes/{export_id}/conversaciones/{ident}')
     def export_inventory(export_id: UUID,ident: UUID,firma: str=Query('',max_length=64)):
         from .report_pdf import access_conversation, signature
-        from .detailed import conversation_evidence
+        from .detailed import exported_evidence
         try:
             access=access_conversation(store,export_id,ident,key,firma)
-            detail=conversation_evidence(store,ident,allowed_ids=access['ids'])
+            files=exported_evidence(store,ident,access['ids'])
         except ReportError as exc:
             raise HTTPException(404,'Enlace de evidencia no disponible') from exc
         fields=('id','name','type','video_id','time','crossing','crossing_source','crossing_time')
         items=[]
-        for file in detail['items']:
+        for file in files:
             if file['type']=='audio_video':
                 continue
             item={field:file[field] for field in fields if field in file}

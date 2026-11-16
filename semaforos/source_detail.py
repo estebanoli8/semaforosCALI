@@ -84,7 +84,7 @@ def result_for(rows, kind):
     return result
 
 
-def enrich(db,conversation_id,items,inventory):
+def enrich(db,conversation_id,items,inventory,*,experiment=None,include_analysis=True):
     messages=[]; linked={}
     for message in db.execute("""
         SELECT m.id,m.ordinal,m.evidence_id,m.sender_visible,m.sent_at,m.body_text,
@@ -115,8 +115,10 @@ def enrich(db,conversation_id,items,inventory):
             ORDER BY created_at DESC,id DESC LIMIT 1) semantic ON true
         WHERE e.conversation_id=%s AND j.stage IN ('video','audio','text','detect')
             AND NOT (j.payload ? 'superseded_by_review')
+            AND (%s::text IS NULL OR j.stage<>'text' OR j.experiment_id=%s)
+            AND (%s OR j.stage='audio')
         ORDER BY (j.config->'text'->>'extraction'='compact-v1') DESC NULLS LAST,j.created_at DESC,j.id DESC
-    """,(conversation_id,)):
+    """,(conversation_id,experiment,experiment,include_analysis)):
         group=rows[row['evidence_id'],row['stage']]
         if not group or all(row[key]==group[0][key] for key in ('experiment_id','version','transcribed_from')):
             group.append(row)
@@ -125,15 +127,16 @@ def enrich(db,conversation_id,items,inventory):
     locations_by_id={}
     for item in items:
         ident,kind=item['id'],item['type']
-        item['analysis']=result_for(rows[ident,STAGES.get(kind)],kind)
-        if kind=='audio':
-            item['extraction']=result_for(rows[ident,'text'],'chat')
-        if kind=='video':
-            audio=audio_by_video.get(ident)
-            item['transcription']=result_for(rows[audio,'audio'],'audio_video') if audio else {
-                'state':'no_audio' if item['analysis']['state']=='completed' else item['analysis']['state'],
-                'error':item['analysis'].get('error')}
-            item['extraction']=result_for(rows[audio,'text'],'chat')
+        if include_analysis:
+            item['analysis']=result_for(rows[ident,STAGES.get(kind)],kind)
+            if kind=='audio':
+                item['extraction']=result_for(rows[ident,'text'],'chat')
+            if kind=='video':
+                audio=audio_by_video.get(ident)
+                item['transcription']=result_for(rows[audio,'audio'],'audio_video') if audio else {
+                    'state':'no_audio' if item['analysis']['state']=='completed' else item['analysis']['state'],
+                    'error':item['analysis'].get('error')}
+                item['extraction']=result_for(rows[audio,'text'],'chat')
         if kind in ('image','video','frame','audio'):
             parent=inventory[ident]['parent_id']
             source_id=parent or ident
