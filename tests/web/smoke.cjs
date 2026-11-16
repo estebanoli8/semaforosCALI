@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const {mkdirSync,readFileSync}=require('node:fs');
 const {chromium}=require('playwright');
+const pdfFilename='Accion Popular Semaforos Cali NOV 16 2026 08-34-06.pdf';
 const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--directory','semaforos/web'],{stdio:'ignore'});
 (async()=>{
   const browser=await chromium.launch({headless:true,...(process.env.SC_CHROMIUM_PATH?{executablePath:process.env.SC_CHROMIUM_PATH}:{})});
@@ -126,7 +127,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
         locationSaved=true;result={version:1};
       }
       else if(path==='/report-exports')return route.fulfill({contentType:'application/pdf',
-        headers:{'X-Report-Export-ID':'example-cut','X-Report-Filename':'Accion Popular Semaforos Cali NOV 16 2026 08-34-06.pdf'},
+        headers:{'X-Report-Export-ID':'example-cut','X-Report-Filename':pdfFilename},
         body:Buffer.from('%PDF-1.4')});
       else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
       else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
@@ -298,7 +299,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('.map-pin').waitFor();
     const pdfDownload=page.waitForEvent('download');
     await page.getByRole('button',{name:'Descargar informe PDF'}).click();
-    assert.equal((await pdfDownload).suggestedFilename(),'semaforos-cali-example-cut.pdf');
+    assert.equal((await pdfDownload).suggestedFilename(),pdfFilename);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/reportes');
@@ -352,7 +353,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(await page.locator('#reportLogin').isVisible(),false);
     const scopedPdf=page.waitForEvent('download');
     await page.getByRole('button',{name:'Descargar informe PDF'}).click();
-    assert.equal((await scopedPdf).suggestedFilename(),'Accion Popular Semaforos Cali NOV 16 2026 08-34-06.pdf');
+    assert.equal((await scopedPdf).suggestedFilename(),pdfFilename);
     const popup = page.waitForEvent('popup');
     await page.getByRole('link',{name:'1 chat TXT'}).click();
     const detail=await popup;
