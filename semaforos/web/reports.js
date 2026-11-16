@@ -1,13 +1,15 @@
 'use strict';
 
 const byId = id => document.getElementById(id);
-const team = location.pathname === '/reportes';
+const signedPath = location.pathname.match(/^\/informe\/conversaciones\/([a-z0-9-]+)\/([a-z0-9-]+)$/i);
+const team = location.pathname === '/reportes' || Boolean(signedPath);
 const pageSize = 20;
 const params = new URLSearchParams(location.search);
 const selectedRecord = team ? params.get('registro') : null;
-const selectedConversation = team ? params.get('conversacion') : null;
+const selectedConversation = signedPath?.[2] || (team ? params.get('conversacion') : null);
 const selectedEpisode = selectedConversation ? params.get('episodio') : null;
-const selectedExport = selectedConversation ? params.get('corte') : null;
+const selectedExport = signedPath?.[1] || (selectedConversation ? params.get('corte') : null);
+const selectedExperiment = team && !selectedExport ? params.get('experimento') : null;
 const selectedType = params.get('tipo') === 'audio_video' ? 'video' : params.get('tipo');
 const locationEditor = team && params.has('ubicaciones') && !selectedRecord && !selectedConversation;
 const detailed = team && !locationEditor;
@@ -164,6 +166,7 @@ function episodeDescription(episodes, state, showLocation=true) {
   const pending=state==='pending';
   if(pending || state==='partial')box.append(node('p',pending?'Análisis de fuentes en curso.':
     'Descripción parcial. Alguna fuente no terminó correctamente.'));
+  if(state==='absent')box.append(node('p','Esta conversación no tiene tareas de texto en el lote seleccionado.'));
 
   for(const episode of episodes) {
     if(showLocation && episode.location) {
@@ -200,7 +203,9 @@ function episodeDescription(episodes, state, showLocation=true) {
 
 function evidenceLink(label, params) {
   const link=node('a',label);
-  link.href='/reportes?'+new URLSearchParams(params);
+  const query=new URLSearchParams(params);
+  if(selectedExperiment && params.conversacion)query.set('experimento',selectedExperiment);
+  link.href='/reportes?'+query;
   link.target='_blank';
   link.rel='noopener noreferrer';
   return link;
@@ -612,9 +617,13 @@ async function loadEvidence(signal) {
   try {
     const base=selectedExport?'/report-media/informes/'+encodeURIComponent(selectedExport)+'/conversaciones/':
       selectedConversation?'/report-media/conversations/':'/report-media/records/';
-    const query=selectedExport?'?'+new URLSearchParams({firma:params.get('firma')||''}):
-      selectedEpisode?'?'+new URLSearchParams({episodio:selectedEpisode}):'';
-    const response=await fetch(base+encodeURIComponent(selectedConversation||selectedRecord)+query,{signal,cache:'no-store'});
+    const query=new URLSearchParams();
+    if(selectedExport)query.set('firma',params.get('firma')||'');
+    else {
+      if(selectedEpisode)query.set('episodio',selectedEpisode);
+      if(selectedExperiment)query.set('experimento',selectedExperiment);
+    }
+    const response=await fetch(base+encodeURIComponent(selectedConversation||selectedRecord)+'?'+query,{signal,cache:'no-store'});
     if(selectedExport && !response.ok)throw Error('El enlace de evidencia venció o no está disponible.');
     if(response.status===401) {
       byId('evidenceAccess').hidden=true;
@@ -638,7 +647,8 @@ async function load() {
   if(selectedRecord||selectedConversation)return loadEvidence(current.signal);
   byId('reportStatus').textContent='Consultando reportes…';
   try {
-    const response=await get(locationEditor?'/report-map':team?'/detailed-records':'/semaforos/datos',{signal:current.signal});
+    const detailPath='/detailed-records'+(selectedExperiment?'?'+new URLSearchParams({experimento:selectedExperiment}):'');
+    const response=await get(locationEditor?'/report-map':team?detailPath:'/semaforos/datos',{signal:current.signal});
     const data=await response.json();
     if(request!==current)return;
     view=data;page=0;
@@ -648,7 +658,7 @@ async function load() {
     byId('reportLogin').hidden=true;
     byId('reportStatus').textContent=params.has('detalle')&&!detailed
       ?'Selecciona una evidencia del reporte que quieras abrir.'
-      :'Corte '+formatDate(view.cutoff)+' · hora de Cali';
+      :'Corte '+formatDate(view.cutoff)+' · hora de Cali'+(view.experiment?' · Lote '+view.experiment:'');
   } catch(error) {
     if(error.name!=='AbortError')byId('reportStatus').textContent=error.message;
   }
@@ -781,9 +791,10 @@ byId('exportPdf').onclick=async()=>{
   byId('reportStatus').textContent='Generando informe…';
   try {
     const response=await get('/report-exports',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({share_evidence:detailed||byId('shareEvidence')?.checked,detailed_report:detailed,action_report:!locationEditor})});
+      body:JSON.stringify({share_evidence:detailed||byId('shareEvidence')?.checked,detailed_report:detailed,
+        action_report:!locationEditor,experiment_id:detailed?selectedExperiment:null})});
     const ident=response.headers.get('X-Report-Export-ID');
-    download(await response.blob(),'semaforos-cali-'+ident+'.pdf');
+    download(await response.blob(),response.headers.get('X-Report-Filename')||'Accion Popular Semaforos Cali.pdf');
     byId('reportStatus').textContent='Informe generado · '+ident;
   } catch(error) {byId('reportStatus').textContent=error.message;}
   finally {button.disabled=false;}

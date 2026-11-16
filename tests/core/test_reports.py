@@ -2,6 +2,7 @@
 import copy
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,6 +23,11 @@ class QuoteTests(unittest.TestCase):
         original='Apagado <attached: foto.jpg> desde ayer.'
         self.assertEqual(clean_quote(original),'Apagado  desde ayer.')
         self.assertIn('<attached:',original)
+
+    def test_export_filename_uses_colombia_date_at_utc_rollover(self):
+        from semaforos.report_pdf import export_filename
+        self.assertEqual(export_filename(datetime(2026,11,17,2,34,6,tzinfo=timezone.utc)),
+                         'Accion Popular Semaforos Cali NOV 16 2026 21-34-06.pdf')
 
 
 @unittest.skipUnless(os.getenv('SC_TEST_DSN'),'PostgreSQL de CI requerido')
@@ -321,7 +327,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(result,[{'stage':'text','n':applied['chat_batches']+applied['audio_batches']}])
 
     def test_detailed_crossings_filter_their_evidence_and_export_links(self):
-        path=self.root/'WhatsApp Chat - Ciudadana de prueba.zip'
+        path=self.root/'WhatsApp Chat - \u2068@CiudadanaBogota\u2069 (1).zip'
         with zipfile.ZipFile(path,'w') as archive:
             archive.writestr('_chat.txt',
                 '[01/11/26, 10:00] Vecina: Quinta con 5, apagado <attached: foto-primera.jpg>\n'
@@ -337,7 +343,7 @@ class ReportTests(unittest.TestCase):
                 self.store.complete(c,job,self.infer(self.store,c,job,self.root))
         items=self.client.get('/detailed-records',headers=self.auth).json()['items']
         row=next(item for item in items if item['id']==cid)
-        self.assertEqual(row['archive_label'],'Ciudadana de prueba')
+        self.assertEqual(row['archive_label'],'@CiudadanaBogota (1)')
         self.assertEqual(row['unassigned_evidence_count'],1)
         self.assertEqual(len(row['episodes']),2)
         self.assertTrue(all(ep['evidence_counts']=={'image':1,'chat':1} for ep in row['episodes']))
@@ -360,18 +366,27 @@ class ReportTests(unittest.TestCase):
                 export=self.client.post('/report-exports',headers={**self.auth,'Origin':'https://testserver',
                                    'Sec-Fetch-Site':'same-origin'},json={'detailed_report':True})
             self.assertEqual(export.status_code,200, export.text[:200] if export.status_code!=200 else '')
-            url=re.search(rb'/URI \(https://testserver(/reportes\?conversacion='+cid.encode()+
-                          rb'&corte=([a-f0-9-]+)&firma=([a-f0-9]+))\)',export.content)
-            self.assertIsNotNone(url)
-            path=f'/report-media/informes/{url[2].decode()}/conversaciones/{cid}'
-            proof=url[3].decode()
+            urls=re.findall(rb'/URI \(https://testserver(/informe/conversaciones/([a-f0-9-]+)/'+cid.encode()+
+                            rb'\?firma=([a-f0-9]+))\)',export.content)
+            self.assertEqual(len(urls),2)
+            self.assertEqual(urls[0],urls[1])
+            url=urls[0]
+            self.assertRegex(export.headers['X-Report-Filename'],
+                             r'^Accion Popular Semaforos Cali [A-Z]{3} \d{2} \d{4} \d{2}-\d{2}-\d{2}\.pdf$')
+            saved=browser.get('/report-exports/'+url[1].decode(),headers=self.auth)
+            self.assertEqual(export.headers['Content-Disposition'],saved.headers['Content-Disposition'])
+            path=f'/report-media/informes/{url[1].decode()}/conversaciones/{cid}'
+            proof=url[2].decode()
             self.store.evidence(cid,'reciente.jpg','image','reciente.jpg',1,'d'*64)
             with TestClient(self.client.app,base_url='https://testserver') as recipient:
-                self.assertEqual(recipient.get(url[1].decode()).status_code,200)
+                self.assertEqual(recipient.get(url[0].decode()).status_code,200)
                 self.assertEqual(recipient.get(base).status_code,401)
                 self.assertEqual(recipient.get(path,params={'firma':'0'*64}).status_code,404)
-                copied=recipient.get(path,params={'firma':proof})
+                # A new extraction cannot break a PDF link to the saved inventory.
+                with patch('semaforos.detailed.compose',side_effect=AssertionError('unexpected recomposition')):
+                    copied=recipient.get(path,params={'firma':proof})
                 self.assertEqual(copied.status_code,200)
+                self.assertEqual(copied.json()['archive_label'],'@CiudadanaBogota (1)')
                 self.assertEqual(copied.json()['date_range'],'01 nov 2026 - 02 nov 2026')
                 items=copied.json()['items']
                 self.assertEqual({file['name'] for file in items},
@@ -381,8 +396,37 @@ class ReportTests(unittest.TestCase):
                 self.assertIn('Quinta con 5',recipient.get(chat['content']).text)
                 self.assertEqual(recipient.get(chat['download']).status_code,200)
                 with self.store.connect() as db:
-                    db.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(url[2].decode(),))
+                    db.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(url[1].decode(),))
                 self.assertEqual(recipient.get(path,params={'firma':proof}).status_code,404)
+
+    def test_historical_batch_keeps_previous_extractions_out_of_its_report(self):
+        from semaforos.optimize_queue import prepare
+        from semaforos.store import LOCK_KEY
+        batch='detalle-qwen-arquitectura-prueba'
+        params={'experimento':batch}
+        self.assertEqual(prepare(self.store,self.config,historical=True,experiment_id=batch)['conversations'],1)
+        old=self.client.get('/detailed-records',headers=self.auth).json()['items'][0]
+        self.assertTrue(any(ep['location'] for ep in old['episodes']))
+        with self.store.connect() as worker:
+            worker.execute('SELECT pg_advisory_xact_lock_shared(%s)',(LOCK_KEY,))
+            first=prepare(self.store,self.config,historical=True,experiment_id=batch,apply=True)
+            repeated=prepare(self.store,self.config,historical=True,experiment_id=batch,apply=True)
+        self.assertEqual(first['queued_conversations'],1)
+        self.assertGreater(first['batch_jobs'],0)
+        self.assertEqual(repeated['batch_jobs'],first['batch_jobs'])
+        pending=self.client.get('/detailed-records',params=params,headers=self.auth).json()
+        self.assertEqual(pending['experiment'],batch)
+        self.assertEqual(pending['items'][0]['analysis_state'],'pending')
+        self.assertTrue(all(not ep['location'] for ep in pending['items'][0]['episodes']))
+        with self.store.connect() as db:
+            ids=db.execute('SELECT id FROM jobs WHERE experiment_id=%s',(batch,)).fetchall()
+            self.assertEqual(len(ids),first['batch_jobs'])
+            for row in ids:
+                job=self.store.claim(db,job_id=row['id'])
+                self.store.complete(db,job,self.infer(self.store,db,job,self.root))
+        ready=self.client.get('/detailed-records',params=params,headers=self.auth).json()['items'][0]
+        self.assertEqual(ready['analysis_state'],'completed')
+        self.assertTrue(any(ep['location'] for ep in ready['episodes']))
 
     def test_detailed_report_date_pdf_reviews_and_queue_replacement(self):
         from semaforos.optimize_queue import prepare

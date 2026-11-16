@@ -55,6 +55,15 @@ class DetailedOptimizationTests(unittest.TestCase):
         self.assertEqual(location['literal'],source['text'])
         self.assertEqual(location['gps'],[{'literal':url,'latitude':3.472345,'longitude':-76.511703}])
 
+    def test_subtitle_credit_does_not_become_a_reported_location(self):
+        credit='Subtítulos realizados por la comunidad de Amara.org'
+        source={'id':'a','text':credit,'origin':'audio_video'}
+        assertion={'source_id':'a','variable':'ubicacion','field_code':'U','literal':credit}
+        episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},
+                           'output':{'assertions':[assertion]}}])
+        self.assertIsNone(episodes[0]['location'])
+        self.assertFalse(episodes[0]['inferred_fault'])
+
     def test_inferred_fault_is_explicit_and_field_scores_only_use_saved_labels(self):
         source={'id':'a','text':'5 x 5','origin':'chat'}
         episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},'output':{'assertions':[]}}])

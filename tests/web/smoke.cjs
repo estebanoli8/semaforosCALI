@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const {mkdirSync,readFileSync}=require('node:fs');
 const {chromium}=require('playwright');
+const pdfFilename='Accion Popular Semaforos Cali NOV 16 2026 08-34-06.pdf';
 const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--directory','semaforos/web'],{stdio:'ignore'});
 (async()=>{
   const browser=await chromium.launch({headless:true,...(process.env.SC_CHROMIUM_PATH?{executablePath:process.env.SC_CHROMIUM_PATH}:{})});
@@ -32,7 +33,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const file=Buffer.alloc(chunkSize+23,65);
     await page.context().route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url()),path=url.pathname;
-      if(['/reportes','/semaforos'].includes(path))return route.fulfill({
+      if(['/reportes','/semaforos','/informe/conversaciones/corte-sintetico/conversation-synthetic'].includes(path))return route.fulfill({
         contentType:'text/html',body:readFileSync('semaforos/web/reports.html')});
       if(path==='/metricas')return route.fulfill({contentType:'text/html',body:readFileSync('semaforos/web/metrics.html')});
       if(path==='/marca-esteban.png')return route.fulfill({contentType:'image/png',body:readFileSync('semaforos/assets/logo-esteban.png')});
@@ -126,7 +127,8 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
         locationSaved=true;result={version:1};
       }
       else if(path==='/report-exports')return route.fulfill({contentType:'application/pdf',
-        headers:{'X-Report-Export-ID':'example-cut'},body:Buffer.from('%PDF-1.4')});
+        headers:{'X-Report-Export-ID':'example-cut','X-Report-Filename':pdfFilename},
+        body:Buffer.from('%PDF-1.4')});
       else if(path==='/export-indexes')result={total:2,items:[{id:'parse-a',zip_name:'Chat.zip',chat_name:'_chat.txt'},{id:'parse-b',zip_name:'Chat (1).zip',chat_name:'_chat.txt'}]};
       else if(path==='/conversation-comparison')result={relation:'derecha_contiene_izquierda',shared_occurrences:2,requires_human_review:true};
       else if(path==='/export-relations'&&request.method()==='GET')result={total:relation?1:0,version:relation?1:0,items:relation?[relation]:[]};
@@ -297,7 +299,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('.map-pin').waitFor();
     const pdfDownload=page.waitForEvent('download');
     await page.getByRole('button',{name:'Descargar informe PDF'}).click();
-    assert.equal((await pdfDownload).suggestedFilename(),'semaforos-cali-example-cut.pdf');
+    assert.equal((await pdfDownload).suggestedFilename(),pdfFilename);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.screenshot({path:'test-artifacts/reports-mobile.png',fullPage:true});
     await page.goto('http://127.0.0.1:8765/reportes');
@@ -351,7 +353,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(await page.locator('#reportLogin').isVisible(),false);
     const scopedPdf=page.waitForEvent('download');
     await page.getByRole('button',{name:'Descargar informe PDF'}).click();
-    assert.equal((await scopedPdf).suggestedFilename(),'semaforos-cali-example-cut.pdf');
+    assert.equal((await scopedPdf).suggestedFilename(),pdfFilename);
     const popup = page.waitForEvent('popup');
     await page.getByRole('link',{name:'1 chat TXT'}).click();
     const detail=await popup;
@@ -367,10 +369,13 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(new URL(page.url()).pathname,'/reportes');
     await detail.close();
     mediaSession=false;
-    await page.goto('http://127.0.0.1:8765/reportes?conversacion=conversation-synthetic&corte=corte-sintetico&firma=firma-sintetica');
-    await page.getByText('Chat del corte',{exact:true}).waitFor();
-    assert.equal(await page.locator('#reportLogin').isVisible(),false);
-    assert.equal(await page.locator('#evidenceReview').isVisible(),false);
+    for(const link of ['/informe/conversaciones/corte-sintetico/conversation-synthetic?firma=firma-sintetica',
+      '/reportes?conversacion=conversation-synthetic&corte=corte-sintetico&firma=firma-sintetica']) {
+      await page.goto('http://127.0.0.1:8765'+link);
+      await page.getByText('Chat del corte',{exact:true}).waitFor();
+      assert.equal(await page.locator('#reportLogin').isVisible(),false);
+      assert.equal(await page.locator('#evidenceReview').isVisible(),false);
+    }
     await page.goto('http://127.0.0.1:8765/semaforos');
     await page.getByText('1 conversación incluida',{exact:true}).waitFor();
     assert.match(await page.locator('#reportStats').textContent(),/Fotos3Videos1Audios3/);

@@ -1,5 +1,6 @@
 """Private conversation report assembled from the latest extraction of each source."""
 import re
+import unicodedata
 from hashlib import sha256
 from collections import Counter, defaultdict
 from zoneinfo import ZoneInfo
@@ -17,6 +18,7 @@ BOGOTA=ZoneInfo('America/Bogota')
 AGENT=re.compile(r'\b(?:guardas?|agentes?(?: de transito)?|alfere[zc]\w*|policia de transito)\b')
 RISK=re.compile(r'\b(?:accident\w*|choc\w*|atropell\w*|riesg\w*|peligr\w*|colisi\w*)\b')
 RECURRENCE=re.compile(r'\b(?:volvi[oó] a (?:dañ|fall)|se dañ[oó] (?:otra vez|de nuevo)|despu[eé]s de (?:arregl|repar))',re.I)
+SUBTITLE_CREDIT=re.compile(r'subtitulos realizados por la comunidad de amara\.org[.!]?',re.I)
 
 RESTORED=re.compile(r'\b(?:ya (?:funciona\w*|prende\w*|(?:lo |la |los |las )?(?:arreglaron|repararon))|'
                     r'no (?:esta\w* )?(?:dañad\w*|apagad\w*))\b')
@@ -32,6 +34,11 @@ def date_label(value):
 def date_range(first,last):
     start,end=date_label(first),date_label(last)
     return start if start==end else f'{start} - {end}'
+
+
+def visible_label(value):
+    value=unicodedata.normalize('NFC',value)
+    return ' '.join(''.join(char for char in value if unicodedata.category(char)!='Cf').split())
 
 
 def field_code(claim):
@@ -83,6 +90,8 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
             # The same source may include several clues. Never choose one arbitrarily.
             local=location_values(literal) if tag=='U' else []
             if tag=='U' and not local:
+                if SUBTITLE_CREDIT.fullmatch(folded(literal).strip()):
+                    continue
                 # Qwen can identify verbal directions outside the static catalog.
                 local=[(literal,'ubicacion_reportada')]
             if tag!='U':
@@ -146,12 +155,7 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
     return list(result.values())
 
 
-def read_conversations(db, selected=None, *, include_evidence=False):
-    conversations=db.execute("""
-        SELECT id,original_name FROM conversations WHERE (%s::uuid IS NULL OR id=%s)
-        ORDER BY created_at DESC,id DESC
-    """,(selected,selected)).fetchall()
-    ids=[row['id'] for row in conversations]
+def evidence_inventory(db, ids, *, allowed_ids=None):
     inventories=defaultdict(dict)
     for row in db.execute("""
         SELECT e.id,e.conversation_id,e.original_name,e.modality,e.parent_id,e.metadata,p.modality AS parent_modality,
@@ -160,11 +164,27 @@ def read_conversations(db, selected=None, *, include_evidence=False):
                      WHERE a.state='linked' AND a.evidence_id IN (e.id,e.parent_id)) AS senders
         FROM evidence e LEFT JOIN evidence p ON p.id=e.parent_id
         WHERE e.conversation_id=ANY(%s::uuid[]) AND e.modality<>'annotated'
+          AND (%s::uuid[] IS NULL OR e.id=ANY(%s::uuid[]))
         ORDER BY e.created_at,e.id
-    """,(ids,)):
+    """,(ids,allowed_ids,allowed_ids)):
         if row['modality']=='audio' and row['senders'] and all(is_team_message(*s) for s in row['senders']):
             continue
         inventories[row['conversation_id']][row['id']]=row
+    return inventories
+
+
+def report_files(inventory):
+    return [{'id':row['id'],'type':evidence_type(row),'name':row['original_name']}
+            for row in inventory.values()]
+
+
+def read_conversations(db, selected=None, *, include_evidence=False, experiment=None):
+    conversations=db.execute("""
+        SELECT id,original_name FROM conversations WHERE (%s::uuid IS NULL OR id=%s)
+        ORDER BY created_at DESC,id DESC
+    """,(selected,selected)).fetchall()
+    ids=[row['id'] for row in conversations]
+    inventories=evidence_inventory(db,ids)
     attachments=defaultdict(set)
     for row in db.execute("""
         SELECT a.message_id,a.evidence_id FROM message_attachments a JOIN evidence e ON e.id=a.evidence_id
@@ -208,8 +228,9 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         ) linked ON true
         WHERE e.conversation_id=ANY(%s::uuid[]) AND j.stage='text' AND j.state='completed'
           AND r.state='completed' AND NOT (j.payload ? 'superseded_by_review') AND NOT (r.output ? 'excluded')
+          AND (%s::text IS NULL OR j.experiment_id=%s)
         ORDER BY (j.config->'text'->>'extraction'='compact-v1') DESC NULLS LAST,j.created_at DESC,j.id DESC
-    """,(ids,)):
+    """,(ids,experiment,experiment)):
         cid,ident=row['conversation_id'],row['evidence_id']
         if ident not in inventories[cid]:
             continue
@@ -223,6 +244,7 @@ def read_conversations(db, selected=None, *, include_evidence=False):
           SELECT e.conversation_id,j.* FROM jobs j JOIN evidence e ON e.id=j.evidence_id
           WHERE e.conversation_id=ANY(%s::uuid[]) AND j.stage IN ('audio','video','text')
             AND NOT (j.payload ? 'superseded_by_review')
+            AND (%s::text IS NULL OR j.experiment_id=%s)
         ), latest AS (
           SELECT DISTINCT ON (evidence_id,stage) evidence_id,stage,experiment_id,
                  config->'text'->>'extraction' AS version
@@ -236,25 +258,26 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         FROM candidates j JOIN latest l USING (evidence_id,stage,experiment_id)
         WHERE j.config->'text'->>'extraction' IS NOT DISTINCT FROM l.version
         GROUP BY j.conversation_id
-    """,(ids,))}
+    """,(ids,experiment,experiment))}
     result=[]
     for conversation in conversations:
         cid=conversation['id']; inventory=inventories[cid]
         dates=[m['sent_at'] for m in messages[cid] if m['sent_at']]
-        people=list(dict.fromkeys(m['sender_visible'].strip().strip('\u200e\u200f') for m in messages[cid]))
+        people=list(dict.fromkeys(filter(None,(visible_label(m['sender_visible']) for m in messages[cid]))))
         reporter=' · '.join(people) if people else conversation['original_name']
         archive_label=re.sub(r'^(?:WhatsApp Chat\s*-\s*|Chat de WhatsApp con\s+)', '',
-                             conversation['original_name'],flags=re.I).strip() or reporter
+                             visible_label(conversation['original_name']),flags=re.I).strip() or reporter
         key=str(cid)
         for label in (reporter, re.sub(r'\s*\([0-9]+\)$','',archive_label)):
             phone=re.sub(r'[\s()+-]','',label)
             if phone.isdecimal() and len(phone)>=8:
                 key=phone
                 break
-        evidence=[{'id':row['id'],'type':evidence_type(row),'name':row['original_name']}
-                  for row in inventory.values()]
+        evidence=report_files(inventory)
         status=processing.get(cid,{})
         state='pending' if status.get('pending') else 'partial' if status.get('failed') else 'completed'
+        if experiment and not status:
+            state='absent'
         episodes=compose(runs[cid],attachments,excluded_messages=excluded_messages)
         assigned=set()
         for episode in episodes:
@@ -278,19 +301,35 @@ def read_conversations(db, selected=None, *, include_evidence=False):
     return result,inventories
 
 
-def snapshot(store):
+def snapshot(store, *, experiment=None):
     with store.connect() as db:
         db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         cutoff=db.execute('SELECT now() AS cutoff').fetchone()['cutoff']
-        rows,_=read_conversations(db,include_evidence=True)
-    return {'cutoff':cutoff,'items':rows}
+        rows,_=read_conversations(db,include_evidence=True,experiment=experiment)
+    return {'cutoff':cutoff,'items':rows,'experiment':experiment}
 
 
-def conversation_evidence(store, ident, episode_id=None, *, allowed_ids=None):
+def evidence_details(db, ident, items, inventory, *, experiment=None, include_analysis=True):
     from .source_detail import enrich
+    for item in items:
+        if item['type']=='frame':
+            frame=inventory[item['id']]
+            item.update(video_id=frame['parent_id'],time=frame['metadata'].get('segundo'))
+    enrich(db,ident,items,inventory,experiment=experiment,include_analysis=include_analysis)
+    return items
+
+
+def exported_evidence(store, ident, allowed_ids):
     with store.connect() as db:
         db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-        rows,inventories=read_conversations(db,ident,include_evidence=True)
+        inventory=evidence_inventory(db,[ident],allowed_ids=allowed_ids)[ident]
+        return evidence_details(db,ident,report_files(inventory),inventory,include_analysis=False)
+
+
+def conversation_evidence(store, ident, episode_id=None, *, experiment=None):
+    with store.connect() as db:
+        db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        rows,inventories=read_conversations(db,ident,include_evidence=True,experiment=experiment)
         if not rows:
             raise ReportError('conversation_not_found')
         row=rows[0]
@@ -302,12 +341,5 @@ def conversation_evidence(store, ident, episode_id=None, *, allowed_ids=None):
                 raise ReportError('report_episode_not_found')
             items=episode['evidence']
             row.update(episodes=[episode],intersection=episode['location'])
-        if allowed_ids is not None:
-            items=[item for item in items if item['id'] in allowed_ids]
-        inventory=inventories[ident]
-        for item in items:
-            if item['type']=='frame':
-                frame=inventory[item['id']]
-                item.update(video_id=frame['parent_id'],time=frame['metadata'].get('segundo'))
-        enrich(db,ident,items,inventory)
+        evidence_details(db,ident,items,inventories[ident],experiment=experiment)
         return {**row,'scope':'registro' if episode_id else 'conversacion','items':items}

@@ -1,11 +1,12 @@
 """Prepare the queued cohort for compact Qwen, or deliberately replay historical text."""
 import argparse
 import json
+import re
 from collections import Counter
 from uuid import UUID
 
 from psycopg.types.json import Jsonb
-from .config import load_config
+from .config import EXPERIMENT_PATTERN, load_config
 from .files import canonical_hash
 from .messages import chat_sources, team_audio
 from .store import LOCK_KEY, Store
@@ -16,18 +17,25 @@ HISTORY='detalle-qwen-v3-historico'
 FIVE='detalle-qwen-v3-piloto-cinco'
 
 
-def prepare(store, config, *, apply=False, historical=False, conversation=None, pilot_five=False):
+def prepare(store, config, *, apply=False, historical=False, conversation=None, pilot_five=False,
+            experiment_id=None):
     if config['text'].get('extraction')!='compact-v1':
         raise ValueError('La configuración debe activar compact-v1')
+    if experiment_id is not None and (not historical or pilot_five or not re.fullmatch(EXPERIMENT_PATTERN,experiment_id)):
+        raise ValueError('Indica un nombre válido de experimento con --historico.')
     historical=historical or pilot_five
-    experiment=FIVE if pilot_five else HISTORY if historical else PILOT
+    experiment=experiment_id or (FIVE if pilot_five else HISTORY if historical else PILOT)
     selection=None
     pilot_cases={}
     scope=[conversation] if conversation is not None else None
     counts=Counter()
     with store.connect() as db:
-        if apply and not db.execute('SELECT pg_try_advisory_xact_lock(%s) AS locked',(LOCK_KEY,)).fetchone()['locked']:
-            raise RuntimeError('Hay un trabajador activo. Pausa el procesamiento y vuelve a ejecutar el comando.')
+        # A named replay only inserts jobs. Serialise preparation with other replays
+        # without pausing workers that are processing existing jobs.
+        lock=LOCK_KEY+13 if experiment_id else LOCK_KEY
+        if apply and not db.execute('SELECT pg_try_advisory_xact_lock(%s) AS locked',(lock,)).fetchone()['locked']:
+            raise RuntimeError('Ya se está preparando un reproceso histórico.' if experiment_id else
+                               'Hay un trabajador activo. Pausa el procesamiento y vuelve a ejecutar el comando.')
         if pilot_five:
             from .pilot import select_five
             selected,missing=select_five(db,experiment)
@@ -99,12 +107,13 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None, 
                   AND (%s::uuid[] IS NULL OR e.conversation_id=ANY(%s))
                 ORDER BY e.id,(v.id IS NOT NULL) DESC,r.finished_at DESC NULLS LAST,r.id DESC
             """,(scope,scope)).fetchall()
-            counts['conversations']=len({r['conversation_id'] for r in chats+audios})
+            candidates={r['conversation_id'] for r in chats}
             for audio in audios:
                 if team_audio(store,audio['id']):
                     counts['transcripts_skipped']+=1
                     continue
                 counts['transcripts']+=1
+                candidates.add(audio['conversation_id'])
                 if apply:
                     origin='audio_video' if audio['parent_id'] else 'audio_whatsapp'
                     parts=audio['output'].get('analysis_parts')
@@ -121,6 +130,14 @@ def prepare(store, config, *, apply=False, historical=False, conversation=None, 
                                 payload['transcription_review_id']=str(audio['review_id'])
                             store.enqueue(audio['id'],'text',experiment,config,payload,connection=db)
                             counts['audio_batches']+=1
+            counts['conversations']=len(candidates)
+        if experiment_id and apply:
+            batch=db.execute("""
+                SELECT count(DISTINCT e.conversation_id) AS queued_conversations,count(*) AS batch_jobs
+                FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+                WHERE j.experiment_id=%s AND j.stage='text' AND NOT (j.payload ? 'superseded_by_review')
+            """,(experiment,)).fetchone()
+            counts.update(batch)
     return {'mode':'aplicado' if apply else 'estimación','experiment':experiment,**counts,**(selection or {})}
 
 
@@ -130,12 +147,16 @@ def main():
     mode=cli.add_mutually_exclusive_group()
     mode.add_argument('--historico',action='store_true')
     mode.add_argument('--piloto-cinco',action='store_true',help='selecciona cinco casos distintos del histórico')
+    cli.add_argument('--experimento',help='identificador del reproceso histórico')
     cli.add_argument('--conversation',type=UUID)
     args=cli.parse_args()
     if args.piloto_cinco and args.conversation:
         cli.error('--piloto-cinco ya selecciona las conversaciones')
+    if args.experimento is not None and (not args.historico or not re.fullmatch(EXPERIMENT_PATTERN,args.experimento)):
+        cli.error('--experimento requiere --historico y un nombre de 1 a 100 letras ASCII, números, puntos, guiones o guiones bajos')
     print(json.dumps(prepare(Store(),load_config(),apply=args.apply,historical=args.historico,
-                             conversation=args.conversation,pilot_five=args.piloto_cinco),ensure_ascii=False))
+                             conversation=args.conversation,pilot_five=args.piloto_cinco,
+                             experiment_id=args.experimento),ensure_ascii=False))
 
 
 if __name__=='__main__':

@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from pathlib import Path
 from .uploads import Uploads, UploadError, CHUNK_BYTES
 from pydantic import BaseModel, Field
-from .config import load_config, storage_root
+from .config import EXPERIMENT_PATTERN, load_config, storage_root
 from .store import Store
 from .files import contained
 from .messages import chat_sources
@@ -56,6 +56,7 @@ class ReportExport(BaseModel):
     share_evidence: bool = False
     action_report: bool = False
     detailed_report: bool = False
+    experiment_id: str | None = Field(default=None,pattern=EXPERIMENT_PATTERN)
 
 
 class UploadStart(BaseModel):
@@ -448,9 +449,9 @@ def create_app(store=None, root=None, config=None, token=None):
         return snapshot(store,root,team=True)
 
     @private.get('/detailed-records')
-    def detailed_records():
+    def detailed_records(experimento: str | None=Query(None,pattern=EXPERIMENT_PATTERN)):
         from .detailed import snapshot
-        return snapshot(store)
+        return snapshot(store,experiment=experimento)
 
     @private.get('/report-map')
     def private_report_map():
@@ -480,23 +481,27 @@ def create_app(store=None, root=None, config=None, token=None):
 
     @private.post('/report-exports')
     def export_report(body: ReportExport,request: Request):
-        from .report_pdf import make_export, report_origin
+        from .report_pdf import export_filename, make_export, report_origin
         origin=report_origin(request)
         try:
-            ident,path=make_export(store,root,token,body.share_evidence,origin,action_report=body.action_report,detailed_report=body.detailed_report)
+            ident,path,generated=make_export(store,root,token,body.share_evidence,origin,
+                action_report=body.action_report,detailed_report=body.detailed_report,experiment=body.experiment_id)
         except ReportError as exc:
             raise HTTPException(400,str(exc))
-        return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf',
-                            headers={'X-Report-Export-ID':str(ident)})
+        filename=export_filename(generated)
+        return FileResponse(path,media_type='application/pdf',filename=filename,
+                            headers={'X-Report-Export-ID':str(ident),'X-Report-Filename':filename})
 
     @private.get('/report-exports/{ident}')
     def download_report_export(ident: UUID):
+        from .report_pdf import export_filename
         with store.connect() as c:
-            row=c.execute('SELECT storage_path FROM report_pdf_exports WHERE id=%s',(ident,)).fetchone()
+            row=c.execute('SELECT storage_path,generated_at FROM report_pdf_exports WHERE id=%s',(ident,)).fetchone()
         path=contained(root,row['storage_path']) if row else None
         if not path or not path.is_file():
             raise HTTPException(404,'Informe no disponible')
-        return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf')
+        filename=export_filename(row['generated_at'])
+        return FileResponse(path,media_type='application/pdf',filename=filename,headers={'X-Report-Filename':filename})
 
     @app.get('/informe/evidencia/{export_id}/{ident}')
     def report_evidence(export_id: UUID,ident: UUID,firma: str = Query('',max_length=64),
@@ -539,6 +544,10 @@ def create_app(store=None, root=None, config=None, token=None):
     @app.get('/semaforos')
     def report_page():
         return FileResponse(Path(__file__).with_name('web')/'reports.html')
+
+    @app.get('/informe/conversaciones/{export_id}/{ident}')
+    def exported_conversation_page(export_id: UUID,ident: UUID):
+        return report_page()
 
     @app.get('/marca-esteban.png')
     def report_logo():

@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+EXPERIMENT_PATTERN = r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'
+
 
 def load_config(path=None):
     value = json.loads(Path(path or os.getenv('SC_MODEL_CONFIG', 'config/modelos.json')).read_text())

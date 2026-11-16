@@ -23,6 +23,7 @@ from .reports import ReportError
 BOGOTA = ZoneInfo('America/Bogota')
 SCHEMA_VERSION = 1
 LINK_DAYS = 7
+MONTHS = 'ENE FEB MAR ABR MAY JUN JUL AGO SEP OCT NOV DIC'.split()
 LOGO = Path(__file__).with_name('assets') / 'logo-esteban.png'
 FONT_DIR = Path(reportlab.__file__).with_name('fonts')
 pdfmetrics.registerFont(TTFont('ReportSans',str(FONT_DIR/'Vera.ttf')))
@@ -31,6 +32,11 @@ pdfmetrics.registerFont(TTFont('ReportSansBold',str(FONT_DIR/'VeraBd.ttf')))
 
 def formatted_date(value):
     return value.astimezone(BOGOTA).strftime('%d/%m/%Y %H:%M:%S COT') if value else 'Sin fecha de mensaje'
+
+
+def export_filename(generated):
+    local=generated.astimezone(BOGOTA)
+    return f'Accion Popular Semaforos Cali {MONTHS[local.month-1]} {local:%d %Y %H-%M-%S}.pdf'
 
 
 def signature(key, export_id, evidence_id, expires_at):
@@ -218,6 +224,8 @@ def render_detailed(data, generated, link_for, expires_at):
         page.drawRightString(568,30,f'Página {doc.page}')
 
     story=[paragraph(f'{len(data["items"])} conversaciones · Corte {formatted_date(data["cutoff"])}',small)]
+    if data.get('experiment'):
+        story.append(paragraph('Lote '+data['experiment'],small))
     if expires_at:
         story.append(paragraph('Enlaces de evidencia disponibles hasta '+formatted_date(expires_at),small))
     groups={}
@@ -249,7 +257,8 @@ def render_detailed(data, generated, link_for, expires_at):
     return buffer.getvalue()
 
 
-def make_export(store, root, key, include_links, origin=None, *, action_report=False, detailed_report=False):
+def make_export(store, root, key, include_links, origin=None, *, action_report=False, detailed_report=False,
+                experiment=None):
     include_links=include_links or detailed_report
     if include_links:
         try:
@@ -261,7 +270,7 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
         origin=f'{base.scheme}://{base.netloc}'
     if detailed_report:
         from .detailed import snapshot as details
-        data=details(store)
+        data=details(store,experiment=experiment)
     else:
         data=snapshot(store,root,team=action_report,export=action_report)
     ident=uuid4()
@@ -273,7 +282,7 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
 
     def conversation_url(conversation_id):
         proof=conversation_signature(key,ident,conversation_id,expires_at)
-        return f'{origin}/reportes?conversacion={conversation_id}&corte={ident}&firma={proof}'
+        return f'{origin}/informe/conversaciones/{ident}/{conversation_id}?firma={proof}'
 
     link_for=evidence_url if include_links else None
     pdf=(render_detailed(data,generated,conversation_url,expires_at) if detailed_report
@@ -308,4 +317,4 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
     finally:
         if tmp is not None:
             tmp.unlink(missing_ok=True)
-    return ident,destination
+    return ident,destination,generated
