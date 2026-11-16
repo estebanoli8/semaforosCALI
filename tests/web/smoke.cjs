@@ -17,6 +17,7 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const gpsUrl='https://maps.google.com/?q=3.472345,-76.511703';
     const citizen={id:'conversation-synthetic',reporter:'Vecina',archive_label:'Ciudadana sintética',reporter_key:'citizen',
       date_from:'2026-11-03T15:00:00Z',date_to:'2026-11-14T15:00:00Z',
+      date_range:'03 nov 2026 - 14 nov 2026',
       episodes:[{id:'episode-one',location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
         fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'audio_video',date:'2026-11-03T15:00:00Z'}],
           gestion:[],peligro:[{code:'P',literal:'Hay riesgo para los peatones.',origin:'audio_video'}],
@@ -54,10 +55,18 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       }
       if(path==='/team-session')return route.fulfill({status:mediaSession?200:401,json:{active:mediaSession}});
       if(path.startsWith('/report-media/')) {
+        if(path==='/report-media/informes/corte-sintetico/conversaciones/conversation-synthetic'){
+          assert.equal(url.searchParams.get('firma'),'firma-sintetica');
+          assert.equal(mediaSession,false);
+          return route.fulfill({json:{scope:'conversacion',archive_label:citizen.archive_label,date_range:citizen.date_range,
+            items:[{id:'text',type:'chat',name:'chat-sintético.txt',
+              content:'/report-media/informes/chat-sintetico',download:'/report-media/informes/chat-sintetico'}]}});
+        }
+        if(path==='/report-media/informes/chat-sintetico')return route.fulfill({contentType:'text/plain',body:'Chat del corte'});
         if(!mediaSession) return route.fulfill({status:401});
         if(['/report-media/records/P-SYNTHETIC','/report-media/conversations/conversation-synthetic'].includes(path)){
           const scoped=path.includes('/conversations/');
-          if(scoped)assert.equal(url.searchParams.get('episodio'),'episode-one');
+          if(scoped && url.searchParams.has('episodio'))assert.equal(url.searchParams.get('episodio'),'episode-one');
           return route.fulfill({json:{scope:'registro',intersection:'Calle 5 con Carrera 70',
             situacion_presentada:'Se reporta una falla.',
             ...(scoped?{...citizen,episodes:[citizen.episodes[0]]}:{}),
@@ -65,6 +74,8 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
               ['audio','audio','voz-sintética.ogg'],['video','video','video-sintético.mp4']]
               .map(([id,type,name])=>({id,type,name,content:'/report-media/files/'+id+'/content',
                 download:'/report-media/files/'+id+'/download',thumbnail:type==='image'?'/marca-esteban.png':undefined,
+                crossing:type==='chat'?undefined:'Calle 5 con Carrera 70',sent_at:'2026-11-14T15:00:00Z',
+                crossing_time:'2026-11-14T15:00:00Z',crossing_source:type==='chat'?undefined:'mensaje vinculado',
                 analysis:type==='chat'?{state:'completed',summaries:['Se identificó un cruce'],run_id:'run-synthetic',evaluations:[{run_id:'run-synthetic'}]}:
                   type==='audio'?{state:'failed',error:'adapter_failed'}:undefined,
                 transcription:type==='video'?{state:'completed',text:'Transcripción sintética del video'}:undefined}))}});
@@ -298,6 +309,16 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const reports=page.locator('.citizen-report > summary');
     await reports.nth(1).waitFor();
     assert.equal(await page.locator('.episode-findings').count(),0);
+    const allEvidence=page.waitForEvent('popup');
+    await reports.first().getByRole('link',{name:'Ver evidencias',exact:true}).click();
+    const all=await allEvidence;
+    await all.locator('#files-video').waitFor();
+    assert.equal(await all.locator('#files-video').getByText('video-sintético.mp4',{exact:false}).count(),0);
+    await all.locator('#files-video').getByText('Ubicación asociada por mensaje vinculado',{exact:false}).waitFor();
+    assert.equal(await all.getByText('Enviado ',{exact:false}).count(),0);
+    assert.equal(await all.getByText('Sin evaluación guardada',{exact:true}).count(),0);
+    await all.close();
+    assert.equal(await page.locator('.episode-findings').count(),0);
     await reports.filter({hasText:'Calle 5 con Carrera 70'}).click();
     const findings=page.locator('.citizen-report[open] .episode-findings');
     await findings.waitFor();
@@ -316,12 +337,12 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
       parseFloat(getComputedStyle(summary.parentElement).fontSize)
     ]);
     assert.ok(Math.abs(sizes[0]/sizes[2]-1.2)<0.001);
-    assert.equal(sizes[0],sizes[1]);
+    assert.ok(sizes[1]<sizes[0]);
     assert.equal(await page.getByText('No detectado',{exact:true}).count(),0);
     for(const label of ['Daño','Gestión','Peligro','Ubicación']) {
       assert.equal(await page.locator('.citizen-report-body').getByText(label,{exact:true}).count(),0);
     }
-    await page.getByText('noviembre / 03 / 2026 – noviembre / 14 / 2026').first().waitFor();
+    await page.getByText('03 nov 2026 - 14 nov 2026').first().waitFor();
     assert.equal(await page.getByText('Apagado por completo',{exact:false}).count(),0);
     assert.equal(await page.locator('#recordsTable').isVisible(),false);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
@@ -345,6 +366,11 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     assert.equal(await save.evaluate(button=>button.classList.contains('saved')),true);
     assert.equal(new URL(page.url()).pathname,'/reportes');
     await detail.close();
+    mediaSession=false;
+    await page.goto('http://127.0.0.1:8765/reportes?conversacion=conversation-synthetic&corte=corte-sintetico&firma=firma-sintetica');
+    await page.getByText('Chat del corte',{exact:true}).waitFor();
+    assert.equal(await page.locator('#reportLogin').isVisible(),false);
+    assert.equal(await page.locator('#evidenceReview').isVisible(),false);
     await page.goto('http://127.0.0.1:8765/semaforos');
     await page.getByText('1 conversación incluida',{exact:true}).waitFor();
     assert.match(await page.locator('#reportStats').textContent(),/Fotos3Videos1Audios3/);

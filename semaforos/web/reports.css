@@ -73,16 +73,21 @@
 .citizen-reports > summary { padding: .85rem .65rem; color: var(--green); font-size: 1rem; font-weight: 700; }
 .citizen-reports[open] > summary { background: #eff5f0; }
 .citizen-report-list { margin: 0 0 .55rem 1.1rem; border-left: 2px solid var(--line); }
-.citizen-report > summary { padding: .7rem .8rem; font-weight: 650; font-size: 120%; }
-.citizen-report > summary small { font-size: 1em; }
+.citizen-report > summary {
+  grid-template-columns: 1rem minmax(0,1fr) auto auto;
+  padding: .7rem .8rem; font-weight: 650; font-size: 120%;
+}
+.citizen-report > summary small { font-size: 12px; font-weight: 500; }
+.citizen-evidence-link { color: var(--green); font-size: 12px; white-space: nowrap; }
 .citizen-report + .citizen-report { border-top: 1px solid var(--line); }
 .citizen-report-body { padding: 0 .85rem .85rem 2.55rem; }
 .citizen-report-files h4 { margin: .45rem 0; }
 .citizen-report-files ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
 .citizen-report-files a { color: var(--green); }
 @media (max-width: 580px) {
-  .citizen-report > summary { grid-template-columns: 1rem minmax(0,1fr); }
+  .citizen-report > summary { grid-template-columns: 1rem minmax(0,1fr) auto; }
   .citizen-report > summary small { grid-column: 2; }
+  .citizen-evidence-link { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
   .citizen-report-body { padding-left: 1.15rem; }
 }
 .episode-findings { margin: .35rem 0 .85rem; }

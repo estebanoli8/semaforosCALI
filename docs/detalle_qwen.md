@@ -9,10 +9,12 @@ La descripción se compone con afirmaciones de Qwen y referencias locales de fue
 ## Navegar el detalle y exportar el PDF
 
 1. Abre **Detalle de reporte**. La lista inicial contiene todos los nombres o números en paneles cerrados.
-2. Abre un nombre para ver las ubicaciones de sus reportes. El cruce y la fecha usan una letra 20 % mayor que la del detalle abierto. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
+2. Abre un nombre para ver las ubicaciones de sus reportes. Cada fila muestra cruce, fecha abreviada y **Ver evidencias**. El enlace abre la conversación completa con videos, fotos, audios y chat TXT. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
 3. Abre una ubicación para ver los hallazgos con su procedencia y los enlaces a las evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación. Los enlaces que contienen coordenadas reconocidas abren Google Maps en otra pestaña, conservando el texto original del hallazgo.
 
-**Descargar informe PDF** reúne el nombre, los cruces y sus enlaces individuales. Los cuatro campos se consultan en el tercer nivel de la web. Los archivos sin vínculo específico aparecen identificados como archivos de la conversación. El PDF conserva el logo, la fecha de generación y la vigencia de siete días de los enlaces firmados. Una ubicación pendiente aparece como **Ubicación sin identificar**.
+**Descargar informe PDF** agrupa las filas por ciudadano. Cada fila contiene el cruce, la fecha abreviada y **Ver evidencias**. El enlace dura siete días y abre una vista de consulta con los archivos de la conversación registrados en ese corte. La vista de edición y evaluación requiere sesión de equipo. Si Easypanel pasa la petición al contenedor por HTTP, el exportador usa el origen HTTPS del navegador si coincide con el dominio de la petición. `SC_REPORT_ORIGIN` permite fijar el dominio.
+
+Las fichas de evidencia muestran el cruce y, cuando está disponible, la procedencia y hora de la asociación. El nombre del archivo queda disponible al descargarlo. En las evaluaciones, el botón cambia de color al guardar.
 
 El cambio usa salidas existentes y entra en vigor después de desplegar la versión que lo contiene. No requiere cargar los ZIP de nuevo ni reprocesar los modelos.
 

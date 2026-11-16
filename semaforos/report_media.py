@@ -97,6 +97,28 @@ def photo_thumbnail(store,root,row,original):
         raise HTTPException(404,'Miniatura no disponible') from exc
 
 
+def evidence_response(store,root,row,kind):
+    if kind=='content' and row['modality']=='chat':
+        with store.connect() as db:
+            chat=db.execute('SELECT literal_text FROM source_texts WHERE evidence_id=%s',(row['id'],)).fetchone()
+        if chat is not None:
+            return PlainTextResponse(chat['literal_text'])
+    original=contained(root,row['storage_path'])
+    if kind=='thumbnail' and row['modality'] in ('image','frame'):
+        return FileResponse(photo_thumbnail(store,root,row,original),media_type='image/jpeg')
+    if not original.is_file():
+        raise HTTPException(404,'Archivo no disponible')
+    if kind=='download':
+        return FileResponse(original,filename=Path(row['original_name']).name,media_type='application/octet-stream')
+    if kind=='content' and row['modality'] in ('audio','video'):
+        media_type=mimetypes.guess_type(row['original_name'])[0]
+        if not media_type and Path(row['original_name']).suffix.lower()=='.opus':
+            media_type='audio/ogg'
+        if media_type and media_type.startswith(row['modality']+'/'):
+            return FileResponse(original,media_type=media_type,content_disposition_type='inline')
+    raise HTTPException(404,'Vista previa no disponible')
+
+
 def create_media_router(store, root, key, team_auth):
     router=APIRouter(prefix=PREFIX)
 
@@ -157,23 +179,30 @@ def create_media_router(store, root, key, team_auth):
                           (ident,)).fetchone()
             if not row:
                 raise HTTPException(404,'Archivo no disponible')
-            if kind=='content' and row['modality']=='chat':
-                chat=c.execute('SELECT literal_text FROM source_texts WHERE evidence_id=%s',(ident,)).fetchone()
-                if chat is not None:
-                    return PlainTextResponse(chat['literal_text'])
-        original=contained(root,row['storage_path'])
-        if kind=='thumbnail' and row['modality'] in ('image','frame'):
-            return FileResponse(photo_thumbnail(store,root,row,original),media_type='image/jpeg')
-        if not original.is_file():
-            raise HTTPException(404,'Archivo no disponible')
-        if kind=='download':
-            return FileResponse(original,filename=Path(row['original_name']).name,media_type='application/octet-stream')
-        if kind=='content' and row['modality'] in ('audio','video'):
-            media_type=mimetypes.guess_type(row['original_name'])[0]
-            if not media_type and Path(row['original_name']).suffix.lower()=='.opus':
-                media_type='audio/ogg'
-            if media_type and media_type.startswith(row['modality']+'/'):
-                return FileResponse(original,media_type=media_type,content_disposition_type='inline')
-        raise HTTPException(404,'Vista previa no disponible')
+        return evidence_response(store,root,row,kind)
+
+    @router.get('/informes/{export_id}/conversaciones/{ident}')
+    def export_inventory(export_id: UUID,ident: UUID,firma: str=Query('',max_length=64)):
+        from .report_pdf import access_conversation, signature
+        from .detailed import conversation_evidence
+        try:
+            access=access_conversation(store,export_id,ident,key,firma)
+            detail=conversation_evidence(store,ident,allowed_ids=access['ids'])
+        except ReportError as exc:
+            raise HTTPException(404,'Enlace de evidencia no disponible') from exc
+        fields=('id','name','type','video_id','time','crossing','crossing_source','crossing_time')
+        items=[]
+        for file in detail['items']:
+            if file['type']=='audio_video':
+                continue
+            item={field:file[field] for field in fields if field in file}
+            proof=signature(key,export_id,file['id'],access['expires_at'])
+            base=f'/informe/evidencia/{export_id}/{file["id"]}?firma={proof}'
+            item.update(content=base+'&vista=content',download=base)
+            if file['type'] in ('image','frame'):
+                item['thumbnail']=base+'&vista=thumbnail'
+            items.append(item)
+        return {'scope':'conversacion','archive_label':access['label'],
+                'date_range':access['date_range'],'items':items}
 
     return router

@@ -8,7 +8,7 @@
 4. Revisar **Métricas de modelos** (`/metricas`). Comprobar el experimento, los tiempos y los fallos. La calidad aparece al registrar referencias humanas utilizables.
 5. Generar el PDF general. Comprobar sello de generación y corte en Colombia, logo, mapa, reportes por cruce y estados. Cada nueva generación guarda un archivo en `/data/core/informes` y una fila con identificador, versiones incluidas y huella SHA-256 en `semaforos.report_pdf_exports`.
 
-**Enlaces de evidencia.** El equipo puede habilitarlos al generar un PDF. Cada enlace concede acceso temporal solo a un archivo de ese corte y vence en siete días. Compartir ese PDF equivale a compartir los archivos indicados durante ese plazo. Para crear enlaces, el origen debe ser HTTPS. Si Easypanel entrega un origen interno al contenedor, establecer `SC_REPORT_ORIGIN` con el dominio HTTPS de la app, sin ruta ni parámetros. Mantener la clave del equipo en el entorno privado. La consulta pública carece de enlaces y archivos originales.
+**Enlaces de evidencia.** El equipo puede habilitarlos al generar un PDF. Los enlaces del PDF general abren la evidencia de ese corte y vencen en siete días. El PDF detallado ofrece un enlace a la conversación completa del corte. Compartir el enlace concede acceso de consulta a esos archivos durante ese plazo. Para crear enlaces, el origen debe ser HTTPS. Si Easypanel entrega un origen interno al contenedor, establecer `SC_REPORT_ORIGIN` con el dominio HTTPS de la app, sin ruta ni parámetros. Mantener la clave del equipo en el entorno privado. La consulta pública carece de enlaces y archivos originales.
 
 ## Resultados preliminares públicos
 

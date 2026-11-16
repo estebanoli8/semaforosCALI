@@ -1,6 +1,7 @@
 """Consolidación con PostgreSQL real; inferencia sintética, nunca ciudadanos reales."""
 import copy
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -352,11 +353,36 @@ class ReportTests(unittest.TestCase):
             self.assertEqual({file['name'] for file in browser.get(base).json()['items']},
                              {'_chat.txt','foto-primera.jpg','foto-segunda.jpg','sin-vinculo.jpg'})
             self.assertEqual(browser.get(base,params={'episodio':'0'*16}).status_code,404)
-            export=browser.post('/report-exports',headers=self.auth,json={'detailed_report':True})
-            self.assertEqual(export.status_code,200)
-            for file in first['items']:
-                url=f'/informe/evidencia/{export.headers["X-Report-Export-ID"]}/{file["id"]}?firma='
-                self.assertIn(url.encode(),export.content)
+            with patch.dict(os.environ,{'SC_REPORT_ORIGIN':''}):
+                mismatch=self.client.post('/report-exports',headers={**self.auth,'Origin':'https://otro.example'},
+                                          json={'detailed_report':True})
+                self.assertEqual(mismatch.json()['detail'],'https_report_origin_required')
+                export=self.client.post('/report-exports',headers={**self.auth,'Origin':'https://testserver',
+                                   'Sec-Fetch-Site':'same-origin'},json={'detailed_report':True})
+            self.assertEqual(export.status_code,200, export.text[:200] if export.status_code!=200 else '')
+            url=re.search(rb'/URI \(https://testserver(/reportes\?conversacion='+cid.encode()+
+                          rb'&corte=([a-f0-9-]+)&firma=([a-f0-9]+))\)',export.content)
+            self.assertIsNotNone(url)
+            path=f'/report-media/informes/{url[2].decode()}/conversaciones/{cid}'
+            proof=url[3].decode()
+            self.store.evidence(cid,'reciente.jpg','image','reciente.jpg',1,'d'*64)
+            with TestClient(self.client.app,base_url='https://testserver') as recipient:
+                self.assertEqual(recipient.get(url[1].decode()).status_code,200)
+                self.assertEqual(recipient.get(base).status_code,401)
+                self.assertEqual(recipient.get(path,params={'firma':'0'*64}).status_code,404)
+                copied=recipient.get(path,params={'firma':proof})
+                self.assertEqual(copied.status_code,200)
+                self.assertEqual(copied.json()['date_range'],'01 nov 2026 - 02 nov 2026')
+                items=copied.json()['items']
+                self.assertEqual({file['name'] for file in items},
+                                 {'_chat.txt','foto-primera.jpg','foto-segunda.jpg','sin-vinculo.jpg'})
+                self.assertTrue(all('analysis' not in file for file in items))
+                chat=next(file for file in items if file['type']=='chat')
+                self.assertIn('Quinta con 5',recipient.get(chat['content']).text)
+                self.assertEqual(recipient.get(chat['download']).status_code,200)
+                with self.store.connect() as db:
+                    db.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(url[2].decode(),))
+                self.assertEqual(recipient.get(path,params={'firma':proof}).status_code,404)
 
     def test_detailed_report_date_pdf_reviews_and_queue_replacement(self):
         from semaforos.optimize_queue import prepare
