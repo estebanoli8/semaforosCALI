@@ -14,11 +14,15 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const uploadedNames=[];
     let report=null,relation=null,showSyntheticJob=false,curationLabel=null,locationSaved=false,publicPin=false,mediaSession=false;
     const finding={id:'f-synthetic',variable:'ubicacion',origin:'chat',literal:'Quinta con 5',display_literal:'Quinta con 5',sent_at:'2026-11-01T15:00:00Z',source_ref:{text:'[01/11/26, 10:00] Vecina sintética: Quinta con 5, apagado.'},report_codes:[]};
+    const gpsUrl='https://maps.google.com/?q=3.472345,-76.511703';
     const citizen={id:'conversation-synthetic',reporter:'Vecina',archive_label:'Ciudadana sintética',reporter_key:'citizen',
       date_from:'2026-11-03T15:00:00Z',date_to:'2026-11-14T15:00:00Z',
       episodes:[{id:'episode-one',location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
         fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'audio_video',date:'2026-11-03T15:00:00Z'}],
-          gestion:[],peligro:[],ubicacion:[{code:'U',literal:'Desde hace   12 días',origin:'chat'}]},
+          gestion:[],peligro:[{code:'P',literal:'Hay riesgo para los peatones.',origin:'audio_video'}],
+          ubicacion:[{code:'U',literal:'Desde hace   12 días',origin:'chat'},
+            {code:'U',literal:'Ubicación del cruce '+gpsUrl,origin:'chat',
+              gps:[{literal:gpsUrl,latitude:3.472345,longitude:-76.511703}]}]},
         evidence_counts:{chat:1,video:1}},{id:'episode-two',location:'Carrera 84',inferred_fault:false,
         fields:{dano:[{code:'D',literal:'Apagado por completo',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]},
         evidence_counts:{chat:1}}],
@@ -297,10 +301,22 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await reports.filter({hasText:'Calle 5 con Carrera 70'}).click();
     const findings=page.locator('.citizen-report[open] .episode-findings');
     await findings.waitFor();
-    assert.equal(await findings.locator('p').count(),1);
-    assert.match(await findings.locator('p').textContent(),/^Desde hace 12 días/);
-    assert.match(await findings.locator('small').textContent(),/Audio de video · Mensaje del noviembre/);
-    assert.equal(await findings.getByText('Chat TXT',{exact:false}).count(),0);
+    assert.equal(await findings.locator('p').count(),3);
+    assert.match(await findings.locator('p').first().textContent(),/^Desde hace 12 días/);
+    assert.match(await findings.locator('small').first().textContent(),/Audio de video · Mensaje del noviembre/);
+    assert.equal(await findings.getByText('Hay riesgo para los peatones.',{exact:false}).count(),1);
+    assert.equal(await findings.getByText('Chat TXT',{exact:false}).count(),1);
+    assert.equal(await findings.getByText('Tipo de falla',{exact:false}).count(),0);
+    const geo=findings.getByRole('link',{name:gpsUrl,exact:true});
+    assert.equal(await geo.getAttribute('href'),gpsUrl);
+    assert.equal(await geo.getAttribute('target'),'_blank');
+    const sizes=await reports.first().evaluate(summary=>[
+      parseFloat(getComputedStyle(summary).fontSize),
+      parseFloat(getComputedStyle(summary.querySelector('small')).fontSize),
+      parseFloat(getComputedStyle(summary.parentElement).fontSize)
+    ]);
+    assert.ok(Math.abs(sizes[0]/sizes[2]-1.2)<0.001);
+    assert.equal(sizes[0],sizes[1]);
     assert.equal(await page.getByText('No detectado',{exact:true}).count(),0);
     for(const label of ['Daño','Gestión','Peligro','Ubicación']) {
       assert.equal(await page.locator('.citizen-report-body').getByText(label,{exact:true}).count(),0);

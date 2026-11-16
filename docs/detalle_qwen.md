@@ -9,8 +9,8 @@ La descripción se compone con afirmaciones de Qwen y referencias locales de fue
 ## Navegar el detalle y exportar el PDF
 
 1. Abre **Detalle de reporte**. La lista inicial contiene todos los nombres o números en paneles cerrados.
-2. Abre un nombre para ver las ubicaciones de sus reportes. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
-3. Abre una ubicación para ver los hallazgos con su procedencia y los enlaces a las evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación.
+2. Abre un nombre para ver las ubicaciones de sus reportes. El cruce y la fecha usan una letra 20 % mayor que la del detalle abierto. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
+3. Abre una ubicación para ver los hallazgos con su procedencia y los enlaces a las evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación. Los enlaces que contienen coordenadas reconocidas abren Google Maps en otra pestaña, conservando el texto original del hallazgo.
 
 **Descargar informe PDF** reúne el nombre, los cruces y sus enlaces individuales. Los cuatro campos se consultan en el tercer nivel de la web. Los archivos sin vínculo específico aparecen identificados como archivos de la conversación. El PDF conserva el logo, la fecha de generación y la vigencia de siete días de los enlaces firmados. Una ubicación pendiente aparece como **Ubicación sin identificar**.
 
@@ -46,6 +46,33 @@ El **15 de noviembre de 2026**, el análisis local de **22 TXT únicos** produjo
 4. Restablece `SC_PROCESS=all` o levanta el worker separado. En **Desempeño de modelos**, filtra `detalle-qwen-v3` y registra total de conversaciones procesadas, mediana y p90 del tiempo acumulado de las llamadas, tokens y truncamientos. Para comparar velocidad, coteja la misma evidencia en ambos perfiles, con el mismo modelo y cuota de Ollama. Revisa manualmente duración de la falla, reparaciones seguidas de recaídas, negaciones de gestión y cruces ambiguos. Los indicadores del panel no incluyen tiempo de espera de la cola.
 
 Tras cotejar el piloto, se puede estimar un reproceso histórico de texto con `/usr/local/bin/python -m semaforos.optimize_queue --historico`. Agrega `--apply` con los workers pausados para encolar `detalle-qwen-v3-historico`. Reutiliza transcripciones, incluidas correcciones guardadas. Las tareas de imágenes y video se generan durante la carga normal.
+
+## Piloto de cinco conversaciones
+
+Después del Deploy, desde la consola del contenedor:
+
+```bash
+/usr/local/bin/python -m semaforos.optimize_queue --piloto-cinco
+/usr/local/bin/python -m semaforos.optimize_queue --piloto-cinco --apply
+```
+
+El primer comando muestra la selección. El segundo registra hasta cinco
+conversaciones distintas y encola únicamente Qwen bajo
+`detalle-qwen-v3-piloto-cinco`. Busca un caso con GPS explícito, otro con
+nota de voz, uno con audio de video, uno con varios cruces y uno con mensajes
+del operador. Cuando hay un adjunto de audio o video vinculado al operador,
+se prioriza para ese caso. Si una categoría carece de candidato distinto,
+se informa y se completa la muestra con otros casos cuando hay elegibles.
+Los UUID de la selección permiten abrir cada conversación con
+`/reportes?conversacion=UUID` en la sesión privada.
+
+La preparación usa el bloqueo del trabajador. Si el comando informa que hay
+una tarea en curso, ejecutarlo al terminarla o pausar los trabajadores para
+preparar la tanda. Una vez encolados, volver a invocarlo recupera la misma
+selección. Reutiliza las transcripciones disponibles y sus correcciones.
+Filtra ese experimento en **Desempeño de modelos**, espera que terminen las
+tareas de texto y coteja los cinco casos con sus originales antes de preparar
+el histórico.
 
 ## Demostrar la alerta MLOps
 

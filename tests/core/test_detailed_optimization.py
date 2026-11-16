@@ -47,6 +47,14 @@ class DetailedOptimizationTests(unittest.TestCase):
         self.assertEqual(combined[0]['fields']['gestion'],[])
         self.assertEqual(combined[0]['fields']['peligro'][0]['origin'],'audio_video')
 
+    def test_detailed_claim_retains_clickable_coordinate_provenance(self):
+        url='https://maps.google.com/?q=3.472345,-76.511703'
+        source={'id':'a','text':'Calle 18 con carrera 15. '+url,'origin':'chat'}
+        episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},'output':{'assertions':[]}}])
+        location=episodes[0]['fields']['ubicacion'][0]
+        self.assertEqual(location['literal'],source['text'])
+        self.assertEqual(location['gps'],[{'literal':url,'latitude':3.472345,'longitude':-76.511703}])
+
     def test_inferred_fault_is_explicit_and_field_scores_only_use_saved_labels(self):
         source={'id':'a','text':'5 x 5','origin':'chat'}
         episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},'output':{'assertions':[]}}])

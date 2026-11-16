@@ -269,6 +269,56 @@ class ReportTests(unittest.TestCase):
         self.assertEqual({job['stage'] for job in jobs},{'audio','text'})
 
 
+    def test_five_conversation_pilot_selects_distinct_cases_and_reuses_the_selection(self):
+        from semaforos.optimize_queue import FIVE,prepare
+        from semaforos.pilot import CASES
+
+        candidates={}
+        for case in (*CASES,'otro'):
+            text='[13/11/26, 10:00] Vecina: Calle 18 con Carrera 15.\n'
+            if case=='gps':
+                text+='[13/11/26, 10:01] Vecina: https://maps.google.com/?q=3.472345,-76.511703\n'
+            elif case=='multiples_cruces':
+                text+='[13/11/26, 11:00] Vecina: Calle 16 con Carrera 80.\n'
+            elif case=='remitente_operador':
+                text+='[13/11/26, 10:01] Esteban Oli semaforos dañados: Gracias por el aviso.\n'
+            path=self.root/(case+'.zip')
+            with zipfile.ZipFile(path,'w') as archive:
+                archive.writestr('_chat.txt',text)
+                archive.writestr('identificador.txt',case)
+            cid=import_zip(self.store,self.root,path,self.config,'case-'+case)['conversation_id']
+            candidates[case]=cid
+            with self.store.connect() as db:
+                jobs=db.execute("""SELECT j.id FROM jobs j JOIN evidence e ON e.id=j.evidence_id
+                    WHERE e.conversation_id=%s""",(cid,)).fetchall()
+                for item in jobs:
+                    job=self.store.claim(db,job_id=item['id'])
+                    self.store.complete(db,job,{'result':{'extraction':{'assertions':[]}},
+                                                'metrics':{},'model_identity':{}})
+                if case in ('audio_whatsapp','audio_video'):
+                    parent=self.store.evidence(cid,case+'.mp4','video','clip.mp4',1,'a'*64) if case=='audio_video' else None
+                    audio=self.store.evidence(cid,case+'.opus','audio','voz.opus',1,'b'*64,parent=parent)
+                    ident=self.store.enqueue(audio,'audio','case-'+case,self.config)
+                    job=self.store.claim(db,job_id=ident)
+                    self.store.complete(db,job,{'result':{'text':'Calle 18 con Carrera 15.','segments':[]},
+                                                'metrics':{},'model_identity':{}})
+                    db.execute('UPDATE jobs SET expanded_at=now() WHERE id=%s',(ident,))
+
+        estimate=prepare(self.store,self.config,pilot_five=True)
+        self.assertEqual(estimate['experiment'],FIVE)
+        self.assertEqual({item['caso']:item['conversation_id'] for item in estimate['seleccion']},
+                         {key:candidates[key] for key in CASES})
+        self.assertEqual(estimate['casos_sin_candidato_distinto'],[])
+        applied=prepare(self.store,self.config,pilot_five=True,apply=True)
+        self.assertEqual(applied['audio_batches'],2)
+        self.assertGreaterEqual(applied['chat_batches'],5)
+        retry=prepare(self.store,self.config,pilot_five=True,apply=True)
+        self.assertEqual(retry['audio_batches'],2)
+        self.assertCountEqual(retry['seleccion'],applied['seleccion'])
+        with self.store.connect() as db:
+            result=db.execute('SELECT stage,count(*) AS n FROM jobs WHERE experiment_id=%s GROUP BY stage',(FIVE,)).fetchall()
+        self.assertEqual(result,[{'stage':'text','n':applied['chat_batches']+applied['audio_batches']}])
+
     def test_detailed_crossings_filter_their_evidence_and_export_links(self):
         path=self.root/'WhatsApp Chat - Ciudadana de prueba.zip'
         with zipfile.ZipFile(path,'w') as archive:
