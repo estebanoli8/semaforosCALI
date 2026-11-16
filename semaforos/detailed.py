@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from .conversation_summary import folded, gps_coordinates
 from .local_places import hints
-from .messages import is_team_sender
+from .messages import is_team_message, team_message_ids
 from .report_evidence import evidence_type, with_video_family
 from .reports import ReportError
 from .text_fields import FIELDS, TAGS
@@ -52,12 +52,17 @@ def location_values(text):
     return []
 
 
-def compose(runs, message_evidence=None):
+def run_sources(run):
+    return run['output'].get('sources',run['payload'].get('sources',[]))
+
+
+def compose(runs, message_evidence=None, *, excluded_messages=()):
     """Combine exact assertions. Keep multiple locations and uncertain associations distinct."""
     claims=[]; places={}; seen=set()
     attachments=message_evidence or {}
     for run in runs:
-        sources={s['id']:s for s in run['payload'].get('sources',[]) if 'id' in s and isinstance(s.get('text'),str)}
+        sources={s['id']:s for s in run_sources(run) if 'id' in s and
+                 isinstance(s.get('text'),str) and s.get('message_id') not in excluded_messages}
         output=run['output']
         for claim in output.get('extraction',output).get('assertions',[]):
             tag=field_code(claim)
@@ -142,13 +147,14 @@ def read_conversations(db, selected=None, *, include_evidence=False):
     inventories=defaultdict(dict)
     for row in db.execute("""
         SELECT e.id,e.conversation_id,e.original_name,e.modality,e.parent_id,e.metadata,p.modality AS parent_modality,
-               ARRAY(SELECT m.sender_visible FROM message_attachments a JOIN messages m ON m.id=a.message_id
+               ARRAY(SELECT ARRAY[m.sender_visible,m.raw_text] FROM message_attachments a
+                     JOIN messages m ON m.id=a.message_id
                      WHERE a.state='linked' AND a.evidence_id IN (e.id,e.parent_id)) AS senders
         FROM evidence e LEFT JOIN evidence p ON p.id=e.parent_id
         WHERE e.conversation_id=ANY(%s::uuid[]) AND e.modality<>'annotated'
         ORDER BY e.created_at,e.id
     """,(ids,)):
-        if row['modality']=='audio' and row['senders'] and all(is_team_sender(s) for s in row['senders']):
+        if row['modality']=='audio' and row['senders'] and all(is_team_message(*s) for s in row['senders']):
             continue
         inventories[row['conversation_id']][row['id']]=row
     attachments=defaultdict(set)
@@ -164,14 +170,16 @@ def read_conversations(db, selected=None, *, include_evidence=False):
           FROM chat_parses p JOIN evidence e ON e.id=p.evidence_id
           WHERE e.conversation_id=ANY(%s::uuid[]) ORDER BY p.evidence_id,p.created_at DESC,p.id DESC
         )
-        SELECT p.conversation_id,m.sender_visible,m.sent_at,m.body_text
+        SELECT p.conversation_id,m.sender_visible,m.sent_at,m.body_text,m.raw_text
         FROM parses p JOIN messages m ON m.parse_id=p.id WHERE m.kind='message'
         ORDER BY m.sent_at NULLS LAST,m.ordinal
     """,(ids,)):
-        if row['sender_visible'] and not is_team_sender(row['sender_visible']) and any(
+        if not row['sender_visible'] or is_team_message(row['sender_visible'],row['raw_text']):
+            continue
+        if any(
                 part.strip() for _,part in useful_segments(row['body_text'])):
             messages[row['conversation_id']].append(row)
-        elif row['sender_visible'] and not is_team_sender(row['sender_visible']):
+        else:
             # Media-only reports still contribute dates. The technical banner does not.
             if ' '.join(row['body_text'].strip().casefold().split()) not in BANNERS:
                 messages[row['conversation_id']].append(row)
@@ -200,6 +208,8 @@ def read_conversations(db, selected=None, *, include_evidence=False):
         source_key=(row['experiment_id'],row['config']['text'].get('extraction'),row['payload'].get('transcription_run_id'))
         if current.setdefault(ident,source_key)==source_key:
             runs[cid].append(row)
+    excluded_messages=team_message_ids(db,(source for group in runs.values()
+                                           for run in group for source in run_sources(run)))
     processing={row['conversation_id']:row for row in db.execute("""
         WITH candidates AS (
           SELECT e.conversation_id,j.* FROM jobs j JOIN evidence e ON e.id=j.evidence_id
@@ -237,7 +247,7 @@ def read_conversations(db, selected=None, *, include_evidence=False):
                   for row in inventory.values()]
         status=processing.get(cid,{})
         state='pending' if status.get('pending') else 'partial' if status.get('failed') else 'completed'
-        episodes=compose(runs[cid],attachments)
+        episodes=compose(runs[cid],attachments,excluded_messages=excluded_messages)
         assigned=set()
         for episode in episodes:
             location=episode['location']

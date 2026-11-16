@@ -1,5 +1,10 @@
 # Historial
 
+## 2026-11-16 — Filtro del remitente y detalle legible
+
+- El lector reconoce los alias del equipo con variantes de tildes y espacios. El ejecutor vuelve a comprobar los remitentes de trabajos antiguos antes de enviar texto a Qwen o audio al transcriptor.
+- El detalle muestra solo hallazgos únicos y su fuente. Conserva los valores por campo para evaluación.
+
 ## 2026-11-15 — Detalle anidado por ciudadano y cruce
 
 - El detalle privado abre nombre o número del ZIP, luego ubicación y, por último, los cuatro campos con sus evidencias.

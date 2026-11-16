@@ -17,7 +17,8 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     const citizen={id:'conversation-synthetic',reporter:'Vecina',archive_label:'Ciudadana sintética',reporter_key:'citizen',
       date_from:'2026-11-03T15:00:00Z',date_to:'2026-11-14T15:00:00Z',
       episodes:[{id:'episode-one',location:'Calle 5 con Carrera 70',location_status:'cruce_explicito',inferred_fault:false,
-        fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]},
+        fields:{dano:[{code:'T',literal:'Desde hace 12 días',origin:'audio_video',date:'2026-11-03T15:00:00Z'}],
+          gestion:[],peligro:[],ubicacion:[{code:'U',literal:'Desde hace   12 días',origin:'chat'}]},
         evidence_counts:{chat:1,video:1}},{id:'episode-two',location:'Carrera 84',inferred_fault:false,
         fields:{dano:[{code:'D',literal:'Apagado por completo',origin:'chat'}],gestion:[],peligro:[],ubicacion:[]},
         evidence_counts:{chat:1}}],
@@ -292,9 +293,18 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await reporter.click();
     const reports=page.locator('.citizen-report > summary');
     await reports.nth(1).waitFor();
-    assert.equal(await page.getByText('Desde cuándo está dañado · Desde hace 12 días').count(),0);
+    assert.equal(await page.locator('.episode-findings').count(),0);
     await reports.filter({hasText:'Calle 5 con Carrera 70'}).click();
-    await page.getByText('Desde cuándo está dañado · Desde hace 12 días',{exact:false}).waitFor();
+    const findings=page.locator('.citizen-report[open] .episode-findings');
+    await findings.waitFor();
+    assert.equal(await findings.locator('p').count(),1);
+    assert.match(await findings.locator('p').textContent(),/^Desde hace 12 días/);
+    assert.match(await findings.locator('small').textContent(),/Audio de video · Mensaje del noviembre/);
+    assert.equal(await findings.getByText('Chat TXT',{exact:false}).count(),0);
+    assert.equal(await page.getByText('No detectado',{exact:true}).count(),0);
+    for(const label of ['Daño','Gestión','Peligro','Ubicación']) {
+      assert.equal(await page.locator('.citizen-report-body').getByText(label,{exact:true}).count(),0);
+    }
     await page.getByText('noviembre / 03 / 2026 – noviembre / 14 / 2026').first().waitFor();
     assert.equal(await page.getByText('Apagado por completo',{exact:false}).count(),0);
     assert.equal(await page.locator('#recordsTable').isVisible(),false);

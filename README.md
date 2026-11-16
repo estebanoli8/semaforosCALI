@@ -19,14 +19,14 @@ Una conversación puede originar varios reportes. Los relatos independientes sob
 
 ## Detalle de reporte y piloto Qwen
 
-- **Detalle de reporte** empieza con los nombres o números de los ZIP cerrados. Al abrir un nombre aparecen sus ubicaciones. Al abrir un reporte se ven Daño, Gestión, Peligro, Ubicación y sus enlaces. Los archivos con vínculo indeterminado quedan accesibles desde la conversación. El PDF muestra el nombre, los cruces y sus enlaces por archivo. [Uso y alcance](docs/detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf).
+- **Detalle de reporte** empieza con los nombres o números de los ZIP cerrados. Al abrir un nombre aparecen sus ubicaciones. Al abrir un reporte se ven los hallazgos y sus enlaces. Cada texto se muestra una vez con su fuente en letra pequeña. Las categorías sin hallazgos se omiten en la vista. Los archivos con vínculo indeterminado quedan accesibles desde la conversación. El PDF muestra el nombre, los cruces y sus enlaces por archivo. [Uso y alcance](docs/detalle_qwen.md#navegar-el-detalle-y-exportar-el-pdf).
 - El diagnóstico offline del **15 de noviembre de 2026** usó **22 TXT únicos**. Antes de inferir, el agrupador pasó de **25 a 20 lotes iniciales** y de **19.207 a 4.977 caracteres de mensaje**. Los resultados de inferencia medidos en el VPS aparecen en el corte del piloto. Los conteos cubren entrada, no reintentos.
 - [Despliegue, migración de cola, evaluación y demostración de alerta](docs/detalle_qwen.md). [Consulta de solo lectura para obtener un corte nuevo](docs/observabilidad.md#corte-agregado-del-piloto).
 
 ## Flujo y modelos
 
 1. El equipo carga los ZIP desde el panel privado. El núcleo guarda los archivos en el VPS y registra su procedencia en PostgreSQL.
-2. El parser lee el chat y enlaza los adjuntos identificables. Los microreportes reconocen coordenadas GPS explícitas. El texto y el audio atribuidos de forma explícita a Esteban Oli se excluyen de las entradas de los modelos.
+2. El parser lee el chat y enlaza los adjuntos identificables. Los microreportes reconocen coordenadas GPS explícitas. Se excluyen del análisis los mensajes de los alias Esteban Oli y Esteban Oli semaforos dañados, y el audio atribuido a ellos mediante un adjunto. El filtro se aplica al preparar y al ejecutar las tareas, también para trabajos en cola.
 3. Los trabajadores generan transcripciones, detecciones y extracciones. La curaduría conserva por separado la predicción original y la corrección humana.
 
 | Componente | Función | Evaluación |

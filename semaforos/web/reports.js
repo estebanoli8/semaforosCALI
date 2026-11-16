@@ -137,47 +137,41 @@ function dateRange(from,to) {
 function episodeDescription(episodes, state, showLocation=true) {
   const box=node('div');
   const pending=state==='pending';
-  const missing=pending?'Pendiente de análisis':'No detectado';
   if(pending || state==='partial')box.append(node('p',pending?'Análisis de fuentes en curso.':
     'Descripción parcial. Alguna fuente no terminó correctamente.'));
 
   for(const episode of episodes) {
-    const list=node('dl');
-    list.className='episode-fields';
     if(showLocation && episode.location) {
       const note=episode.location_status?.replaceAll('_',' ');
       box.append(node('h4',episode.location+(note?' · '+note:'')));
     }
-    for(const [key,label] of Object.entries(fieldLabels)) {
-      list.append(node('dt',label));
-      const value=node('dd');
-      const hits=episode.fields[key]||[];
-      if(key==='dano') {
-        if(episode.inferred_fault&&!pending&&state!=='partial')value.append(node('p','Semáforo dañado, inferido por el contexto del reporte.'));
-        for(const tag of ['D','T','R']) {
-          const matches=hits.filter(hit=>hit.code===tag);
-          if(!matches.length)value.append(node('p',tagLabels[tag]+' · '+missing));
-          for(const hit of matches) {
-            const metadata=[sources[hit.origin],hit.code==='T'&&hit.date?'Mensaje del '+dateLabel(hit.date):null].filter(Boolean);
-            const line=node('p',tagLabels[tag]+' · '+hit.literal);
-            if(metadata.length)line.append(node('small',' — '+metadata.join(' · ')));
-            value.append(line);
-          }
-        }
-      } else {
-        if(!hits.length)value.append(node('p',missing));
-        for(const hit of hits) {
-          const line=node('p',hit.literal);
-          if(sources[hit.origin])line.append(node('small',' — '+sources[hit.origin]));
-          value.append(line);
-        }
-      }
-      list.append(value);
+    const findings=node('div');
+    findings.className='episode-findings';
+    if(episode.inferred_fault && !pending && state!=='partial') {
+      const inferred=node('p','Semáforo dañado, inferido por el contexto del reporte.');
+      const origin=sources[episode.fields.ubicacion?.[0]?.origin];
+      if(origin)inferred.append(node('small',' — '+origin));
+      findings.append(inferred);
     }
-    box.append(list);
+    const seen=new Set();
+    for(const key of Object.keys(fieldLabels)) {
+      for(const hit of episode.fields[key]||[]) {
+        const literal=hit.literal?.trim();
+        if(!literal)continue;
+        const identity=literal.normalize('NFC').replace(/\s+/g,' ').toLocaleLowerCase('es-CO');
+        if(seen.has(identity))continue;
+        seen.add(identity);
+        const metadata=[sources[hit.origin],hit.code==='T'&&hit.date?'Mensaje del '+dateLabel(hit.date):null].filter(Boolean);
+        const line=node('p',literal);
+        if(metadata.length)line.append(node('small',' — '+metadata.join(' · ')));
+        findings.append(line);
+      }
+    }
+    if(findings.children.length)box.append(findings);
   }
   return box;
 }
+
 function evidenceLink(label, params) {
   const link=node('a',label);
   link.href='/reportes?'+new URLSearchParams(params);
@@ -533,7 +527,7 @@ function renderEvidence(data) {
   if(data.episodes) {
     byId('evidenceTitle').textContent=data.intersection||data.archive_label||data.reporter;
     byId('evidenceScope').textContent=scope+' · '+dateRange(data.date_from,data.date_to);
-    byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state));
+    byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state,!data.intersection));
   } else byId('evidenceSituation').textContent=data.situacion_presentada||'Situación por consolidar';
   const list=byId('evidenceFiles'),nav=byId('evidenceTypes');
   list.replaceChildren();nav.replaceChildren();

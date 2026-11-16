@@ -4,13 +4,13 @@
 
 La vista privada `/reportes` usa como encabezado el nombre o número del ZIP. Las exportaciones con el mismo teléfono inequívoco comparten encabezado y conservan sus reportes independientes. El detalle usa las ubicaciones y los hallazgos ya extraídos; la fecha abarca el primer y último mensaje ciudadano con hora reconocida. Los originales y las transcripciones completas se consultan desde los enlaces de evidencia.
 
-La descripción se compone con afirmaciones de Qwen y referencias locales de fuentes ya procesadas. Se comprueba que cada frase se encuentre literalmente en la fuente. La interfaz distingue el tipo de falla, **desde cuándo lleva dañado** y la reincidencia tras reparación. Gestión registra guarda o agente, incluida la ausencia explícita. Peligro registra accidentes o riesgos y a quiénes afectan cuando se menciona. Las ubicaciones aproximadas se conservan como tales, y una ubicación sola marca el daño como inferido. Cuando termina el barrido, cada parte faltante se muestra como **No detectado**. Mientras hay fuentes en procesamiento, los campos faltantes aparecen pendientes y la inferencia de daño por ubicación sola espera al cierre. La fecha que acompaña la duración corresponde al mensaje que la declara, sin convertir el intervalo de la conversación en tiempo de falla.
+La descripción se compone con afirmaciones de Qwen y referencias locales de fuentes ya procesadas. Se comprueba que cada frase se encuentre literalmente en la fuente. La interfaz distingue el tipo de falla, **desde cuándo lleva dañado** y la reincidencia tras reparación. Gestión registra guarda o agente, incluida la ausencia explícita. Peligro registra accidentes o riesgos y a quiénes afectan cuando se menciona. Las ubicaciones aproximadas se conservan como tales, y una ubicación sola marca el daño como inferido. El detalle muestra una sola vez cada texto encontrado, en el orden Daño, Gestión, Peligro y Ubicación. Oculta los encabezados de campo y las partes sin hallazgos. Cada texto incluye la fuente en letra pequeña y, para la duración, la fecha del mensaje cuando consta. El estado general distingue el análisis en curso del parcial. La inferencia de daño por ubicación sola espera al cierre. La fecha que acompaña la duración corresponde al mensaje que la declara, sin convertir el intervalo de la conversación en tiempo de falla.
 
 ## Navegar el detalle y exportar el PDF
 
 1. Abre **Detalle de reporte**. La lista inicial contiene todos los nombres o números en paneles cerrados.
 2. Abre un nombre para ver las ubicaciones de sus reportes. Usa la búsqueda para filtrar por nombre, teléfono o ubicación.
-3. Abre una ubicación para ver Daño, Gestión, Peligro y Ubicación con sus evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación.
+3. Abre una ubicación para ver los hallazgos con su procedencia y los enlaces a las evidencias. El enlace abre el visor privado en otra pestaña. Un adjunto se vincula al cruce cuando lo identifica la fuente del hallazgo o hay un único cruce asociado con su mensaje. Las fotos y los videos que queden sin atribuirse siguen disponibles como archivos de la conversación.
 
 **Descargar informe PDF** reúne el nombre, los cruces y sus enlaces individuales. Los cuatro campos se consultan en el tercer nivel de la web. Los archivos sin vínculo específico aparecen identificados como archivos de la conversación. El PDF conserva el logo, la fecha de generación y la vigencia de siete días de los enlaces firmados. Una ubicación pendiente aparece como **Ubicación sin identificar**.
 
@@ -88,6 +88,20 @@ La consulta de tareas registró cero pendientes, en ejecución o fallidas. Las 4
 
 El corte da cobertura marginal por campo y puede incorporar resultados previos del mismo reporte. La cobertura conjunta de los cuatro campos requiere contar la intersección por conversación. El acierto y las omisiones se validan revisando fuentes. Queda pendiente medir el perfil anterior sobre las mismas fuentes y con la misma unidad para calcular la mejora de velocidad.
 
-Para comprobar la función en producción, cotejar en **Detalle de reporte** conversaciones del piloto con referencias de cada campo. Distinguir análisis pendiente, parcial y terminado. Un campo ausente al terminar figura como **No detectado**. La cantidad de conversaciones con un valor mide cobertura. La validación del contenido requiere revisar el original; también cuenta si se omitió un valor que sí aparecía en la fuente. Una ubicación sola puede originar una inferencia de daño que se identifica como tal.
+Para comprobar la función en producción, cotejar en **Detalle de reporte** conversaciones del piloto con referencias de cada campo. Distinguir análisis pendiente, parcial y terminado. Un campo ausente al terminar se omite en la vista. La cantidad de conversaciones con un valor mide cobertura. La validación del contenido requiere revisar el original; también cuenta si se omitió un valor que sí aparecía en la fuente. Una ubicación sola puede originar una inferencia de daño que se identifica como tal.
 
 La comprobación técnica de `compact-v1` usa la identidad guardada en los runs completados. El valor de hilos es el solicitado al modelo. En **Desempeño de modelos** filtrar `detalle-qwen-v3`. Reportar el denominador al lado de los tiempos. [Consulta agregada](observabilidad.md#corte-agregado-del-piloto) y [protocolo de comparación](experimentos.md#comparación-de-qwen-en-el-vps).
+
+## Mensajes y audios del operador
+
+La importación y el trabajador excluyen los alias **Esteban Oli** y
+**Esteban Oli semaforos dañados**, con variantes de mayúsculas, tildes y espacios.
+Se reconoce la cabecera del export de WhatsApp con hora AM/PM y se recupera el
+remitente desde la cabecera original cuando un índice anterior dejó el campo
+vacío o interpretó otro nombre. La exclusión cubre el cuerpo completo de cada
+mensaje y el audio vinculado explícitamente a mensajes del operador. Los
+archivos de origen desconocido conservan su tratamiento normal.
+
+El detalle también descarta hallazgos históricos vinculados a esos mensajes.
+El filtro usa el remitente y los vínculos de adjuntos de WhatsApp. Los ZIP y
+el TXT original se conservan como evidencia.

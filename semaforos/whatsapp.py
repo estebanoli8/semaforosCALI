@@ -1,10 +1,11 @@
 """Lectura conservadora de exportaciones WhatsApp. Nunca altera el texto fuente."""
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-PARSER_VERSION = 'whatsapp-2'
+PARSER_VERSION = 'whatsapp-3'
 DEFAULT_OPTIONS = {'date_order': 'DMY', 'timezone': 'America/Bogota', 'two_digit_century': 2000}
 MARKS = '\ufeff\u200e\u200f\u202a\u202b\u202c\u2066\u2067\u2068\u2069'
 PREFIX = '[' + MARKS + ']*'
@@ -13,6 +14,22 @@ TIME = r'\d{1,2}:\d{2}(?::\d{2})?(?:\s*[aApP]\.?\s*[mM]\.?)?'
 HEADER = re.compile(r'^' + PREFIX + r'(?:\[(?P<ios_date>' + DATE + r'),?\s+(?P<ios_time>' + TIME + r')\]\s*|(?P<android_date>' + DATE + r'),?\s+(?P<android_time>' + TIME + r')\s+-\s+)(?P<payload>.*)$')
 ATTACHED = re.compile(r'<(?:attached|adjunto):\s*([^<>\r\n]+)>', re.I)
 NAMED_ATTACHMENT = re.compile(r'^([^\r\n<>]+?)\s+\((?:archivo adjunto|file attached)\)\s*$', re.I | re.M)
+SENDER_SEPARATOR = re.compile(r':(?:[^\S\r\n]|$)')
+
+
+def is_team_sender(value):
+    normalized=unicodedata.normalize('NFKD',value or '')
+    clean=''.join(char for char in normalized if unicodedata.category(char) not in ('Cf','Mn'))
+    alias=' '.join(clean.split()).casefold().lstrip('~').strip()
+    return alias in ('esteban oli','esteban oli semaforos danados')
+
+
+def is_team_message(sender, raw_text):
+    if is_team_sender(sender):
+        return True
+    # Recover the sender from older parses that required an ASCII space.
+    match=HEADER.match(raw_text.partition('\n')[0].rstrip('\r'))
+    return bool(match and is_team_sender(match['payload'].partition(':')[0]))
 
 
 def options(value=None):
@@ -86,10 +103,16 @@ def parse_chat(text, config=None):
             item['date_order_assumed'] = config['date_order'] != 'AUTO' and item['date_order_used'] != 'YMD'
             payload = match['payload']
             # Un aviso sin remitente se conserva; no se convierte en denuncia ciudadana.
-            separator = payload.find(': ')
+            first_colon=payload.find(':')
+            spaced=SENDER_SEPARATOR.search(payload)
+            separator=(first_colon if first_colon>0 and is_team_sender(payload[:first_colon])
+                       else spaced.start() if spaced else -1)
             if separator > 0:
+                body_start=separator+1
+                if body_start<len(payload) and payload[body_start].isspace():
+                    body_start+=1
                 item['sender_visible'] = payload[:separator]
-                item['body_text'] = raw[match.start('payload')+separator+2:]
+                item['body_text'] = raw[match.start('payload')+body_start:]
                 item['kind'] = 'message'
             else:
                 item['body_text'] = raw[match.start('payload'):]
@@ -134,7 +157,7 @@ BANNERS = (
 
 
 def unknown_sender(payload):
-    return bool(': ' not in payload and re.match(r'^[^|—]{1,80}\s+(?:\||—|→)\s+\S',payload))
+    return bool(not SENDER_SEPARATOR.search(payload) and re.match(r'^[^|—]{1,80}\s+(?:\||—|→)\s+\S',payload))
 
 
 def format_health(text, records):

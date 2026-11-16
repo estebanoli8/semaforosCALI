@@ -84,11 +84,9 @@
   .citizen-report > summary small { grid-column: 2; }
   .citizen-report-body { padding-left: 1.15rem; }
 }
-.episode-fields { margin: .4rem 0 1rem; }
-.episode-fields dt { font-weight: 700; color: #224233; }
-.episode-fields dd { margin: 0 0 .55rem; }
-.episode-fields p { margin: .16rem 0; }
-.episode-fields small { color: #58665d; }
+.episode-findings { margin: .35rem 0 .85rem; }
+.episode-findings p { margin: .25rem 0; white-space: pre-wrap; }
+.episode-findings small { color: #58665d; }
 .evidence-review fieldset { border: 1px solid #c5d2c9; border-radius: .4rem; margin: .35rem 0; }
 .evidence-review fieldset label { margin-right: .6rem; }
 .evidence-review button.saved { background: #217245; color: #fff; border-color: #217245; }
