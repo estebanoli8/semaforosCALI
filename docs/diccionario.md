@@ -318,6 +318,6 @@ El detalle privado agrupa por ciudadano y conversación. El rango de fechas cubr
 | Peligro | Accidente o riesgo declarado y el grupo vial afectado si se menciona. |
 | Ubicación | Cruce, dirección, referencia o cercanía. Una ubicación sola puede inferir un reporte de daño al cerrar el análisis. Se muestra como inferencia. |
 
-Se conservan citas y origen. Una fuente en ejecución mantiene pendiente el campo que falta. Un campo sin hallazgo al finalizar figura como **No detectado**. Una falla de procesamiento se registra aparte como análisis parcial. Los relatos independientes de un mismo cruce conservan su identidad.
+Se conservan citas y origen. La vista omite las categorías sin hallazgos y muestra una sola vez las citas repetidas, con su fuente. Las variables siguen disponibles en los datos del reporte. El estado general indica si el análisis está en curso o quedó parcial. Los relatos independientes de un mismo cruce conservan su identidad.
 
 Dentro de una misma selección de ZIP, el mayor sufijo numérico tiene prioridad por nombre base. Las decisiones de comparación entre exportaciones ya guardadas conservan su historial. YOLO registra presencia y cajas. Se retiró la lectura automática de luces. El PDF privado del nuevo detalle incluye enlaces firmados individuales con vigencia de siete días. [Guía vigente del detalle](detalle_qwen.md).

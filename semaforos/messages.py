@@ -3,23 +3,26 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 from .files import canonical_hash
-from .whatsapp import PARSER_VERSION, options, parse_chat, message_chunks, compact_sources, format_health
+from .whatsapp import (PARSER_VERSION, compact_sources, format_health, is_team_message,
+                       is_team_sender, message_chunks, options, parse_chat)
 
 
-def is_team_sender(value):
-    import unicodedata
-    value=''.join(c for c in unicodedata.normalize('NFKC',value or '') if unicodedata.category(c)!='Cf')
-    name = ' '.join(value.split()).casefold().lstrip('~').strip()
-    return name in ('esteban oli','esteban oli semaforos dañados','esteban oli semáforos dañados')
+def team_message_ids(db, sources):
+    ids={source['message_id'] for source in sources if source.get('message_id')}
+    if not ids:
+        return set()
+    return {str(row['id']) for row in db.execute(
+        'SELECT id,sender_visible,raw_text FROM messages WHERE id=ANY(%s::uuid[])',(list(ids),))
+        if is_team_message(row['sender_visible'],row['raw_text'])}
 
 
 def team_audio(store, evidence_id):
     """Exclude only explicitly linked audio when every identified sender is the team."""
     with store.connect() as c:
-        rows=c.execute("""SELECT m.sender_visible FROM message_attachments a
+        rows=c.execute("""SELECT m.sender_visible,m.raw_text FROM message_attachments a
             JOIN messages m ON m.id=a.message_id WHERE a.evidence_id IN (%s,(SELECT parent_id FROM evidence WHERE id=%s)) AND a.state='linked'""",
             (evidence_id,evidence_id)).fetchall()
-    return bool(rows) and all(is_team_sender(r['sender_visible']) for r in rows)
+    return bool(rows) and all(is_team_message(r['sender_visible'],r['raw_text']) for r in rows)
 
 
 def index_chat(store, evidence_id, config):
@@ -65,4 +68,4 @@ def chat_sources(store, evidence_id, config):
         with c.cursor(name='chat_sources') as cursor:
             cursor.execute('SELECT * FROM messages WHERE parse_id=%s ORDER BY ordinal', (ident,))
             chunker=compact_sources if config['text'].get('extraction')=='compact-v1' else message_chunks
-            yield from chunker(row for row in cursor if not is_team_sender(row['sender_visible']))
+            yield from chunker(row for row in cursor if not is_team_message(row['sender_visible'],row['raw_text']))

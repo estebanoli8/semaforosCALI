@@ -82,19 +82,63 @@ class CurationLanesTests(unittest.TestCase):
 
     def test_zip_filters_team_text_and_explicit_audio_but_keeps_unknown(self):
         import zipfile
+        from semaforos.detailed import snapshot
         from semaforos.ingest import import_zip
+        from semaforos.worker import execute_child
+
         archive=self.root/'fixture.zip'
+        team_text='Calle 99 con carrera 99, mensaje del equipo'
+        compact_text='Segunda nota privada del equipo'
+        citizen_text='Quinta con cinco apagado'
+        original=(
+            f'[13/11/26, 3:40:59\u202fPM] Esteban Oli semaforos dañados: {team_text}\n'
+            'Continuación privada.\n'
+            f'[13/11/26, 3:41:59\u202fPM] \u200eEsteban Oli semáforos dañados:{compact_text} <attached: team.opus>\n'
+            f'[13/11/26, 3:42:59\u202fPM] Vecina:\u202f{citizen_text} <attached: citizen.opus>\n'
+        )
         with zipfile.ZipFile(archive,'w') as z:
-            z.writestr('_chat.txt','[01/11/26, 10:00] Esteban Oli: Gracias <attached: team.opus>\n'
-                '[01/11/26, 10:01] Vecina: Quinta con cinco apagado <attached: citizen.opus>\n')
-            for name in ('team.opus','citizen.opus','unknown.opus'):z.writestr(name,b'fixture')
-        import_zip(self.store,self.root,archive,self.config,'fixture')
+            z.writestr('_chat.txt',original)
+            for name in ('team.opus','citizen.opus','unknown.opus'):
+                z.writestr(name,b'fixture')
+        cid=import_zip(self.store,self.root,archive,self.config,'fixture')['conversation_id']
         with self.store.connect() as c:
-            rows=c.execute('SELECT j.stage,j.payload,e.original_name FROM jobs j JOIN evidence e ON e.id=j.evidence_id').fetchall()
-        self.assertNotIn('team.opus',[r['original_name'] for r in rows])
-        self.assertIn('citizen.opus',[r['original_name'] for r in rows]);self.assertIn('unknown.opus',[r['original_name'] for r in rows])
-        texts=[s['text'] for r in rows if r['stage']=='text' for s in r['payload']['sources']]
-        self.assertTrue(any('Quinta con cinco' in s for s in texts));self.assertFalse(any('Esteban Oli' in s for s in texts))
+            rows=c.execute("""SELECT j.stage,j.payload,e.original_name FROM jobs j
+                JOIN evidence e ON e.id=j.evidence_id""").fetchall()
+            messages=c.execute("""SELECT id,evidence_id
+                FROM messages ORDER BY ordinal""").fetchall()
+            audio=c.execute("SELECT id FROM evidence WHERE original_name='team.opus'").fetchone()['id']
+            self.assertEqual(c.execute('SELECT literal_text FROM source_texts').fetchone()['literal_text'],original)
+            # Simulate older indexed messages losing the sender when whitespace differed.
+            c.execute('UPDATE messages SET sender_visible=NULL WHERE id=%s',(messages[1]['id'],))
+        queued=[r['original_name'] for r in rows]
+        self.assertNotIn('team.opus',queued)
+        self.assertIn('citizen.opus',queued)
+        self.assertIn('unknown.opus',queued)
+        expected_sources=[s for r in rows if r['stage']=='text' for s in r['payload']['sources']]
+        self.assertEqual([s['text'] for s in expected_sources],[citizen_text])
+
+        historic=[]
+        for i,(record,literal) in enumerate(zip(messages,(team_text,compact_text,citizen_text))):
+            historic.append({'id':str(i),'origin':'chat','text':literal,'message_id':str(record['id'])})
+        prior_job=self.store.enqueue(messages[0]['evidence_id'],'text','old-queue',self.config,{'sources':historic})
+        prior_audio=self.store.enqueue(audio,'audio','old-queue',self.config)
+        with self.store.connect() as c:
+            job=self.store.claim(c,job_id=prior_job)
+            class InputCaptured(Exception):
+                pass
+            with patch('semaforos.worker.atomic_json',side_effect=InputCaptured) as capture:
+                with self.assertRaises(InputCaptured):
+                    execute_child(self.store,c,job,self.root)
+            self.assertEqual(capture.call_args.args[1]['payload']['sources'],historic[-1:])
+            self.store.complete(c,job,{'result':{'extraction':{'assertions':[]}},'metrics':{},'model_identity':{}})
+            job=self.store.claim(c,job_id=prior_audio)
+            with patch('semaforos.worker.atomic_json') as capture:
+                result=execute_child(self.store,c,job,self.root)
+                capture.assert_not_called()
+            self.assertEqual(result['result']['excluded'],'team_sender_audio')
+        detail=next(row for row in snapshot(self.store)['items'] if str(row['id'])==cid)
+        self.assertNotIn('99',str([episode['location'] for episode in detail['episodes']]))
+        self.assertNotIn('team.opus',[item['name'] for item in detail['evidence']])
 
     def test_two_lanes_overlap_but_duplicate_lane_and_legacy_do_not(self):
         self.store.enqueue(self.eid,'audio','trial',self.config)

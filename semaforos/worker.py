@@ -107,20 +107,21 @@ def once(store, root, runner=None):
 
 
 def execute_child(store,c,job,root,progress_reporter=None):
-    from .messages import team_audio,is_team_sender
+    from .messages import team_audio,team_message_ids
     # Recheck older queued jobs too; sender inference is never based on proximity.
     if job['stage']=='audio' and team_audio(store,job['evidence_id']):
         return {'result':{'text':'','segments':[],'excluded':'team_sender_audio'},
                 'metrics':{'wall_seconds':0},'model_identity':{'provider':'sender_filter'}}
     payload=dict(job['payload'])
     if job['stage']=='text':
-        mids=[s['message_id'] for s in payload.get('sources',[]) if s.get('message_id')]
-        if mids:
+        sources=payload.get('sources',[])
+        if team_audio(store,job['evidence_id']):
+            sources=[]
+        elif any(source.get('message_id') for source in sources):
             with store.connect() as lookup:
-                rows=lookup.execute('SELECT id,sender_visible FROM messages WHERE id=ANY(%s::uuid[])',(mids,)).fetchall()
-            excluded={str(row['id']) for row in rows if is_team_sender(row['sender_visible'])}
-            payload['sources']=[s for s in payload.get('sources',[]) if s.get('message_id') not in excluded]
-        if team_audio(store,job['evidence_id']):payload['sources']=[]
+                excluded=team_message_ids(lookup,sources)
+            sources=[source for source in sources if source.get('message_id') not in excluded]
+        payload['sources']=sources
         if not payload.get('sources'):
             return {'result':{'extraction':{'summary':'','assertions':[]},'excluded':'team_sender'},
                     'metrics':{'wall_seconds':0},'model_identity':{'provider':'sender_filter'}}
