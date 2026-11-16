@@ -1,5 +1,11 @@
 # Historial
 
+## 2026-11-16 — Informe detallado con enlace a la conversación
+
+- Las filas de la web y el PDF muestran cruce, fecha abreviada y enlace a las evidencias de la conversación.
+- El PDF se genera detrás del proxy HTTPS de Easypanel cuando el origen del navegador coincide con el dominio de la petición. Los enlaces firmados muestran solo los archivos del corte.
+- Las fichas presentan cruce y procedencia cuando constan. El color del botón indica la evaluación guardada.
+
 ## 2026-11-16 — GPS clicable y piloto de cinco conversaciones
 
 - El detalle abre las coordenadas reconocidas en Google Maps y aumenta el tamaño del cruce y la fecha.

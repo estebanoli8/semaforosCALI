@@ -7,6 +7,7 @@ const params = new URLSearchParams(location.search);
 const selectedRecord = team ? params.get('registro') : null;
 const selectedConversation = team ? params.get('conversacion') : null;
 const selectedEpisode = selectedConversation ? params.get('episodio') : null;
+const selectedExport = selectedConversation ? params.get('corte') : null;
 const selectedType = params.get('tipo') === 'audio_video' ? 'video' : params.get('tipo');
 const locationEditor = team && params.has('ubicaciones') && !selectedRecord && !selectedConversation;
 const detailed = team && !locationEditor;
@@ -50,7 +51,15 @@ async function get(path, options = {}) {
     throw Error('La clave no es válida. Vuelve a ingresarla.');
   }
   if (response.status === 409) throw Error('El reporte cambió o faltan datos. Revisa el formulario y actualiza el corte.');
-  if (!response.ok) throw Error('No se pudo completar la solicitud.');
+  if (!response.ok) {
+    if(path==='/report-exports') {
+      const detail=(await response.json().catch(()=>({}))).detail;
+      if(detail==='https_report_origin_required')
+        throw Error('El informe requiere el dominio HTTPS. Abre el portal por HTTPS o configura SC_REPORT_ORIGIN.');
+      throw Error('No se pudo generar el informe PDF (HTTP '+response.status+').');
+    }
+    throw Error('No se pudo completar la solicitud.');
+  }
   return response;
 }
 
@@ -202,7 +211,9 @@ function detailedEpisode(row, episode) {
   report.className='citizen-report';
   const label=episode.location||'Ubicación sin identificar';
   const summary=node('summary');
-  summary.append(node('span',label),node('small',dateRange(row.date_from,row.date_to)));
+  const allEvidence=evidenceLink('Ver evidencias',{conversacion:row.id});
+  allEvidence.className='citizen-evidence-link';
+  summary.append(node('span',label),node('small',row.date_range),allEvidence);
   report.append(summary);
   report.addEventListener('toggle',()=>{
     if(!report.open || report.children.length>1)return;
@@ -430,8 +441,8 @@ function reviewForm(result, mode) {
   }
   const save=node('button','Guardar evaluación');
   save.type='submit';save.className='secondary';save.classList.toggle('saved',stored!=null);
-  form.addEventListener('input',()=>{save.classList.remove('saved');status.textContent='Cambios pendientes';});
-  const status=node('small',stored==null?'Sin evaluación guardada':'Evaluación guardada');
+  const status=node('small');
+  form.addEventListener('input',()=>{save.classList.remove('saved');status.textContent='';});
   status.setAttribute('role','status');
   form.append(save,status);
   form.onsubmit=async event=>{
@@ -507,11 +518,9 @@ function showModel(card, result, kind) {
 function evidenceCard(file) {
   const card=node('article');
   card.className='evidence-card'+(file.type==='frame'?' evidence-frame':'');
-  const local=['image','video','frame'].includes(file.type);
-  card.append(node('h4',local?(file.crossing||'Cruce por identificar'):file.name));
-  if(local)card.append(node('small',file.name+(file.time!=null?' · segundo '+file.time:'')));
-  if(file.sent_at)card.append(node('p','Enviado '+formatDate(file.sent_at)));
-  if(local && file.crossing_source) {
+  const titles={chat:'Chat TXT',other:'Archivo'};
+  card.append(node('h4',file.crossing||titles[file.type]||'Cruce por identificar'));
+  if(file.crossing_source) {
     const source=node('small','Ubicación asociada por '+file.crossing_source+
       (file.crossing_time?' · '+formatDate(file.crossing_time):''));
     card.append(source);
@@ -520,7 +529,7 @@ function evidenceCard(file) {
     const thumb=node('img');
     thumb.src=file.thumbnail;
     thumb.loading='lazy';
-    thumb.alt=file.name;
+    thumb.alt=file.crossing|| (file.type==='frame'?'Fotograma de la evidencia':'Foto de la evidencia');
     thumb.addEventListener('error',()=>{
       thumb.replaceWith(node('p','Miniatura no disponible. Puedes descargar el original.'));
     });
@@ -541,7 +550,10 @@ function renderEvidence(data) {
   byId('evidenceTitle').textContent=data.intersection?'Evidencias · '+data.intersection:'Evidencias del reporte';
   const scope=data.scope==='conversacion'?'Archivos de la conversación':'Archivos vinculados al registro';
   byId('evidenceScope').textContent=data.date?scope+' · '+formatDate(data.date):scope;
-  if(data.episodes) {
+  if(selectedExport) {
+    byId('evidenceTitle').textContent=data.archive_label||'Evidencias del informe';
+    byId('evidenceScope').textContent=scope+' · '+data.date_range;
+  } else if(data.episodes) {
     byId('evidenceTitle').textContent=data.intersection||data.archive_label||data.reporter;
     byId('evidenceScope').textContent=scope+' · '+dateRange(data.date_from,data.date_to);
     byId('evidenceSituation').replaceChildren(episodeDescription(data.episodes,data.analysis_state,!data.intersection));
@@ -578,7 +590,7 @@ function renderEvidence(data) {
         grid.className='evidence-grid';
         grid.append(...frames.sort((a,b)=>(a.time??0)-(b.time??0)).map(evidenceCard));
         bucket.open=selectedType==='frame' && byVideo.size===1;
-        bucket.append(node('summary',(video?.crossing||video?.name||'Video')+' · '+frames.length+
+        bucket.append(node('summary',(video?.crossing||'Video')+' · '+frames.length+
           (frames.length===1?' fotograma':' fotogramas')),grid);
         group.append(bucket);
       }
@@ -598,9 +610,12 @@ function renderEvidence(data) {
 async function loadEvidence(signal) {
   byId('reportStatus').textContent='Consultando evidencias…';
   try {
-    const base=selectedConversation?'/report-media/conversations/':'/report-media/records/';
-    const query=selectedEpisode?'?'+new URLSearchParams({episodio:selectedEpisode}):'';
+    const base=selectedExport?'/report-media/informes/'+encodeURIComponent(selectedExport)+'/conversaciones/':
+      selectedConversation?'/report-media/conversations/':'/report-media/records/';
+    const query=selectedExport?'?'+new URLSearchParams({firma:params.get('firma')||''}):
+      selectedEpisode?'?'+new URLSearchParams({episodio:selectedEpisode}):'';
     const response=await fetch(base+encodeURIComponent(selectedConversation||selectedRecord)+query,{signal,cache:'no-store'});
+    if(selectedExport && !response.ok)throw Error('El enlace de evidencia venció o no está disponible.');
     if(response.status===401) {
       byId('evidenceAccess').hidden=true;
       byId('evidenceFiles').replaceChildren();
@@ -692,8 +707,12 @@ function logout() {
   if(byId('shareEvidence'))byId('shareEvidence').checked=false;
   for(const id of ['reportStatus','mapSelection','editTitle','editStatus'])byId(id).textContent='';
 }
-byId('audience').textContent=team?'Acceso privado':'Consulta pública';
-byId('reportLogin').hidden=!team;
+byId('audience').textContent=selectedExport?'Evidencias del informe':team?'Acceso privado':'Consulta pública';
+byId('reportLogin').hidden=!team||Boolean(selectedExport);
+if(selectedExport) {
+  for(const id of ['evidenceLogout','evidenceReview','evidenceDescription'])byId(id).hidden=true;
+  document.querySelector('.team-brand nav').hidden=true;
+}
 byId('preliminaryNote').hidden=team;
 byId('recordCodeHeader').hidden=!locationEditor;
 byId('recordStateHeader').hidden=!locationEditor;
@@ -706,11 +725,11 @@ if(detailed) {
   byId('reportPagination').hidden=true;
   byId('citizenReports').hidden=false;
   byId('recordsPanel').querySelector('h2').textContent='Reportes por ciudadano';
-  byId('pdfSummary').textContent='El PDF reúne nombres, cruces y enlaces a las evidencias.';
+  byId('pdfSummary').textContent='El PDF reúne nombres, cruces, fechas y enlaces a las conversaciones.';
   byId('reportSearch').labels[0].textContent='Buscar por ciudadano o ubicación';
   byId('reportSearch').placeholder='Nombre, celular, dirección o referencia';
   byId('shareEvidence').checked=true;
-  byId('shareEvidence').parentElement.replaceChildren(document.createTextNode('El PDF contiene enlaces directos válidos durante 7 días. Quien reciba el enlace podrá abrir la evidencia.'));
+  byId('shareEvidence').parentElement.replaceChildren(document.createTextNode('El PDF contiene enlaces directos válidos durante 7 días. Quien reciba el enlace podrá ver las evidencias de esa conversación.'));
 }
 
 if(!locationEditor&&!detailed) {
@@ -769,5 +788,5 @@ byId('exportPdf').onclick=async()=>{
   } catch(error) {byId('reportStatus').textContent=error.message;}
   finally {button.disabled=false;}
 };
-if(!team)load();
+if(!team||selectedExport)load();
 else teamSession.active().then(active=>{if(active)load();});

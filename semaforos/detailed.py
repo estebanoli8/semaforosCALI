@@ -12,7 +12,7 @@ from .reports import ReportError
 from .text_fields import FIELDS, TAGS
 from .whatsapp import BANNERS, useful_segments
 
-MONTHS = 'enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre'.split()
+MONTHS = 'ene feb mar abr may jun juli ago sept oct nov dic'.split()
 BOGOTA=ZoneInfo('America/Bogota')
 AGENT=re.compile(r'\b(?:guardas?|agentes?(?: de transito)?|alfere[zc]\w*|policia de transito)\b')
 RISK=re.compile(r'\b(?:accident\w*|choc\w*|atropell\w*|riesg\w*|peligr\w*|colisi\w*)\b')
@@ -26,7 +26,12 @@ def date_label(value):
     if not value:
         return 'Sin fecha disponible'
     date=value.astimezone(BOGOTA)
-    return f'{MONTHS[date.month-1]} / {date.day:02} / {date.year}'
+    return f'{date.day:02} {MONTHS[date.month-1]} {date.year}'
+
+
+def date_range(first,last):
+    start,end=date_label(first),date_label(last)
+    return start if start==end else f'{start} - {end}'
 
 
 def field_code(claim):
@@ -266,6 +271,7 @@ def read_conversations(db, selected=None, *, include_evidence=False):
               'date_from':min(dates,default=None),'date_to':max(dates,default=None),'episodes':episodes,
               'evidence_counts':dict(Counter(file['type'] for file in evidence)),
               'unassigned_evidence_count':len(unassigned)}
+        item['date_range']=date_range(item['date_from'],item['date_to'])
         if include_evidence:
             item.update(evidence=evidence,unassigned_evidence=unassigned)
         result.append(item)
@@ -280,7 +286,7 @@ def snapshot(store):
     return {'cutoff':cutoff,'items':rows}
 
 
-def conversation_evidence(store, ident, episode_id=None):
+def conversation_evidence(store, ident, episode_id=None, *, allowed_ids=None):
     from .source_detail import enrich
     with store.connect() as db:
         db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -296,6 +302,8 @@ def conversation_evidence(store, ident, episode_id=None):
                 raise ReportError('report_episode_not_found')
             items=episode['evidence']
             row.update(episodes=[episode],intersection=episode['location'])
+        if allowed_ids is not None:
+            items=[item for item in items if item['id'] in allowed_ids]
         inventory=inventories[ident]
         for item in items:
             if item['type']=='frame':

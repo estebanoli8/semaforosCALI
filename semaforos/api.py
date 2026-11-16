@@ -480,8 +480,8 @@ def create_app(store=None, root=None, config=None, token=None):
 
     @private.post('/report-exports')
     def export_report(body: ReportExport,request: Request):
-        from .report_pdf import make_export
-        origin=os.getenv('SC_REPORT_ORIGIN') or str(request.base_url)
+        from .report_pdf import make_export, report_origin
+        origin=report_origin(request)
         try:
             ident,path=make_export(store,root,token,body.share_evidence,origin,action_report=body.action_report,detailed_report=body.detailed_report)
         except ReportError as exc:
@@ -499,16 +499,15 @@ def create_app(store=None, root=None, config=None, token=None):
         return FileResponse(path,media_type='application/pdf',filename=f'semaforos-cali-{ident}.pdf')
 
     @app.get('/informe/evidencia/{export_id}/{ident}')
-    def report_evidence(export_id: UUID,ident: UUID,firma: str = Query('',max_length=64)):
+    def report_evidence(export_id: UUID,ident: UUID,firma: str = Query('',max_length=64),
+                        vista: Literal['content','thumbnail','download']='download'):
         from .report_pdf import access_evidence
+        from .report_media import evidence_response
         try:
             row=access_evidence(store,export_id,ident,token,firma)
         except ReportError:
             raise HTTPException(404,'Enlace no disponible')
-        path=contained(root,row['storage_path'])
-        if not path.is_file():
-            raise HTTPException(404,'Archivo no disponible')
-        return FileResponse(path,filename=Path(row['original_name']).name,media_type='application/octet-stream')
+        return evidence_response(store,root,row,vista)
 
     @private.get('/evidence/{ident}/download')
     def download_evidence(ident:UUID):

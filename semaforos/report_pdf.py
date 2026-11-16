@@ -38,10 +38,42 @@ def signature(key, export_id, evidence_id, expires_at):
     return hmac.new(key.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
+def report_origin(request):
+    configured=os.getenv('SC_REPORT_ORIGIN')
+    if configured:
+        return configured
+    if request.url.scheme=='http' and request.headers.get('sec-fetch-site') in (None,'same-origin'):
+        try:
+            origin=urlsplit(request.headers.get('origin',''))
+            if origin.scheme=='https' and origin.netloc==request.url.netloc:
+                return origin.geturl()
+        except ValueError:
+            pass
+    return str(request.base_url)
+
+
+def conversation_signature(key,export_id,conversation_id,expires_at):
+    value=f'report-conversation|{export_id}|{conversation_id}|{int(expires_at.timestamp())}'
+    return hmac.new(key.encode(),value.encode(),hashlib.sha256).hexdigest()
+
+
+def access_conversation(store,export_id,conversation_id,key,provided):
+    with store.connect() as db:
+        row=db.execute("""
+            SELECT version->>'label' AS label,version->>'date_range' AS date_range,
+                   x.evidence_expires_at AS expires_at,
+                   ARRAY(SELECT jsonb_array_elements_text(version->'evidence_ids')::uuid) AS ids
+            FROM report_pdf_exports x CROSS JOIN LATERAL jsonb_array_elements(x.report_versions) version
+            WHERE x.id=%s AND x.evidence_expires_at>now() AND version->>'conversation_id'=%s
+        """,(export_id,str(conversation_id))).fetchone()
+    if not row or not hmac.compare_digest(conversation_signature(key,export_id,conversation_id,row['expires_at']),provided):
+        raise ReportError('evidence_link_unavailable')
+    return row
+
 def access_evidence(store, export_id, evidence_id, key, provided):
     with store.connect() as c:
         row = c.execute('''
-            SELECT e.storage_path, e.original_name, x.evidence_expires_at
+            SELECT e.id,e.storage_path,e.original_name,e.modality,e.sha256,x.evidence_expires_at
             FROM report_pdf_exports x JOIN evidence e ON e.id=ANY(x.evidence_ids)
             WHERE x.id=%s AND e.id=%s AND x.evidence_expires_at > now()
         ''', (export_id,evidence_id)).fetchone()
@@ -159,20 +191,18 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
 
 
 def render_detailed(data, generated, link_for, expires_at):
+    from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.platypus import Paragraph, SimpleDocTemplate
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
     from .text_fields import WEB_SUBTITLE, WEB_TITLE
 
     regular=ParagraphStyle('DetailRegular',fontName='ReportSans',fontSize=9,leading=13)
-    bold=ParagraphStyle('DetailHeading',parent=regular,fontName='ReportSansBold',fontSize=12,leading=15,
-                        spaceBefore=10,keepWithNext=True)
-    crossing=ParagraphStyle('DetailCrossing',parent=regular,fontName='ReportSansBold',leftIndent=12,
-                            spaceBefore=4,keepWithNext=True)
+    bold=ParagraphStyle('DetailHeading',parent=regular,fontName='ReportSansBold',fontSize=11,leading=14,
+                        textColor=HexColor('#215b46'))
+    crossing=ParagraphStyle('DetailCrossing',parent=regular,fontName='ReportSansBold')
     small=ParagraphStyle('DetailSmall',parent=regular,fontSize=8,leading=11)
-    evidence=ParagraphStyle('DetailEvidence',parent=small,leftIndent=24,spaceAfter=4)
-    file_labels={'audio':'Audio de WhatsApp','audio_video':'Audio de video','image':'Foto','video':'Video',
-                 'chat':'Chat TXT','frame':'Fotograma','other':'Archivo'}
+    date=ParagraphStyle('DetailDate',parent=small,textColor=HexColor('#475851'))
 
     def paragraph(text, style=regular):
         return Paragraph(escape(text).replace('\n','<br/>'),style)
@@ -194,26 +224,24 @@ def render_detailed(data, generated, link_for, expires_at):
     for row in data['items']:
         groups.setdefault(row['reporter_key'],[]).append(row)
 
-    def evidence_links(files):
-        if not files:
-            return paragraph('Sin archivos vinculados.',evidence)
-        links=[]
-        for item in files:
-            label=escape(file_labels[item['type']]+' · '+item['name'])
-            if link_for:
-                label=f'<a href="{escape(link_for(item["id"]),quote=True)}" color="#204C8A">{label}</a>'
-            links.append(label)
-        return Paragraph('  |  '.join(links),evidence)
-
     for rows in groups.values():
-        story.append(paragraph(rows[0]['archive_label'],bold))
+        cells=[[paragraph(rows[0]['archive_label'],bold),'','']]
         for row in rows:
+            url=escape(link_for(row['id']),quote=True) if link_for else None
             for episode in row['episodes']:
-                story.append(paragraph(episode['location'] or 'Ubicación sin identificar',crossing))
-                story.append(evidence_links(episode['evidence']))
-            if row['unassigned_evidence']:
-                story.append(paragraph('Otros archivos de la conversación',crossing))
-                story.append(evidence_links(row['unassigned_evidence']))
+                link=Paragraph(f'<a href="{url}" color="#204C8A">Ver evidencias</a>',small) if url else ''
+                cells.append([paragraph(episode['location'] or 'Ubicación sin identificar',crossing),
+                              paragraph(row['date_range'],date),link])
+        table=Table(cells,colWidths=[254,158,98],repeatRows=1,splitInRow=1,hAlign='LEFT',spaceBefore=10)
+        table.setStyle(TableStyle([
+            ('SPAN',(0,0),(-1,0)),
+            ('BACKGROUND',(0,0),(-1,0),HexColor('#eaf2ed')),
+            ('LINEBELOW',(0,1),(-1,-1),0.4,HexColor('#dce5e0')),
+            ('TOPPADDING',(0,0),(-1,-1),6),
+            ('BOTTOMPADDING',(0,0),(-1,-1),6),
+            ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ]))
+        story.append(table)
     buffer=BytesIO()
     document=SimpleDocTemplate(buffer,pagesize=letter,leftMargin=46,rightMargin=44,topMargin=76,bottomMargin=44,
                                title=WEB_TITLE,author='Esteban Oliveros Montoya')
@@ -224,7 +252,10 @@ def render_detailed(data, generated, link_for, expires_at):
 def make_export(store, root, key, include_links, origin=None, *, action_report=False, detailed_report=False):
     include_links=include_links or detailed_report
     if include_links:
-        base=urlsplit(origin or '')
+        try:
+            base=urlsplit(origin or '')
+        except ValueError as exc:
+            raise ReportError('https_report_origin_required') from exc
         if base.scheme!='https' or not base.netloc or base.username or base.password or base.path not in ('','/') or base.query or base.fragment:
             raise ReportError('https_report_origin_required')
         origin=f'{base.scheme}://{base.netloc}'
@@ -240,9 +271,15 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
     def evidence_url(evidence_id):
         return f'{origin}/informe/evidencia/{ident}/{evidence_id}?firma={signature(key,ident,evidence_id,expires_at)}'
 
+    def conversation_url(conversation_id):
+        proof=conversation_signature(key,ident,conversation_id,expires_at)
+        return f'{origin}/reportes?conversacion={conversation_id}&corte={ident}&firma={proof}'
+
     link_for=evidence_url if include_links else None
-    pdf=render_detailed(data,generated,link_for,expires_at) if detailed_report else render_pdf(data,ident,generated,link_for,expires_at)
-    versions=([{'conversation_id':str(r['id']),'evidence_ids':[str(e['id']) for e in r['evidence']]}
+    pdf=(render_detailed(data,generated,conversation_url,expires_at) if detailed_report
+         else render_pdf(data,ident,generated,link_for,expires_at))
+    versions=([{'conversation_id':str(r['id']),'label':r['archive_label'],'date_range':r['date_range'],
+                'evidence_ids':[str(e['id']) for e in r['evidence']]}
                for r in data['items']] if detailed_report else
               [{'id':str(r['id']),'version':r['version'],'map_version':r['map_version']} if 'id' in r else
                {'code':r['code'],'date':r['date'].isoformat() if r['date'] else None,
