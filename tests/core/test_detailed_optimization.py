@@ -55,14 +55,40 @@ class DetailedOptimizationTests(unittest.TestCase):
         self.assertEqual(location['literal'],source['text'])
         self.assertEqual(location['gps'],[{'literal':url,'latitude':3.472345,'longitude':-76.511703}])
 
-    def test_subtitle_credit_does_not_become_a_reported_location(self):
-        credit='Subtítulos realizados por la comunidad de Amara.org'
-        source={'id':'a','text':credit,'origin':'audio_video'}
-        assertion={'source_id':'a','variable':'ubicacion','field_code':'U','literal':credit}
+    def test_asr_outros_do_not_become_reported_locations(self):
+        for credit in ('Subtítulos realizados por la comunidad de Amara.org',
+                       'Subtítulos por la comunidad de Amara.org','¡Suscríbete!'):
+            source={'id':'a','text':credit,'origin':'audio_video'}
+            assertion={'source_id':'a','variable':'ubicacion','field_code':'U','literal':credit}
+            episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},
+                               'output':{'assertions':[assertion]}}])
+            self.assertIsNone(episodes[0]['location'])
+            self.assertFalse(episodes[0]['inferred_fault'])
+
+    def test_location_heading_never_falls_back_to_a_long_quote(self):
+        literal=('Este semáforo está dañado y todos andan de afán, los peatones, '
+                 'las motos y las bicicletas eléctricas corren peligro.')
+        source={'id':'a','text':literal,'origin':'audio_video'}
+        assertion={'source_id':'a','variable':'ubicacion','field_code':'U','literal':literal}
         episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},
                            'output':{'assertions':[assertion]}}])
+        self.assertEqual(len(episodes),1)
         self.assertIsNone(episodes[0]['location'])
-        self.assertFalse(episodes[0]['inferred_fault'])
+        self.assertEqual(episodes[0]['fields']['ubicacion'][0]['literal'],literal)
+
+    def test_pilot_references_are_short_location_headings(self):
+        cases={
+            'Buenas, para reportar semáforo malo en Guadalupe, lleva demasiado rato.':'Guadalupe',
+            'Vivo en Puertas del Sol, sector 1, en la Comuna 14.':'Puertas del Sol, sector 1',
+            'Esto es al frente del Coliseo de María Isabel Urrutia.':'Coliseo María Isabel Urrutia',
+            'Barrio Atanasio Girardot comuna 8.':'barrio Atanasio Girardot, comuna 8',
+        }
+        for literal,expected in cases.items():
+            source={'id':'a','text':literal,'origin':'chat'}
+            assertion={'source_id':'a','variable':'ubicacion','field_code':'U','literal':literal}
+            episodes=compose([{'job_id':'x','evidence_id':'a','payload':{'sources':[source]},
+                               'output':{'assertions':[assertion]}}])
+            self.assertIn(expected,{episode['location'] for episode in episodes})
 
     def test_inferred_fault_is_explicit_and_field_scores_only_use_saved_labels(self):
         source={'id':'a','text':'5 x 5','origin':'chat'}
