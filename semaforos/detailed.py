@@ -5,6 +5,7 @@ from hashlib import sha256
 from collections import Counter, defaultdict
 from zoneinfo import ZoneInfo
 
+from .asr_artifacts import is_artifact
 from .conversation_summary import folded, gps_coordinates
 from .local_places import hints
 from .messages import is_team_message, team_message_ids
@@ -18,8 +19,6 @@ BOGOTA=ZoneInfo('America/Bogota')
 AGENT=re.compile(r'\b(?:guardas?|agentes?(?: de transito)?|alfere[zc]\w*|policia de transito)\b')
 RISK=re.compile(r'\b(?:accident\w*|choc\w*|atropell\w*|riesg\w*|peligr\w*|colisi\w*)\b')
 RECURRENCE=re.compile(r'\b(?:volvi[oó] a (?:dañ|fall)|se dañ[oó] (?:otra vez|de nuevo)|despu[eé]s de (?:arregl|repar))',re.I)
-SUBTITLE_CREDIT=re.compile(r'subtitulos realizados por la comunidad de amara\.org[.!]?',re.I)
-
 RESTORED=re.compile(r'\b(?:ya (?:funciona\w*|prende\w*|(?:lo |la |los |las )?(?:arreglaron|repararon))|'
                     r'no (?:esta\w* )?(?:dañad\w*|apagad\w*))\b')
 
@@ -82,6 +81,10 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
             literal=claim.get('literal')
             if not tag or not src or not isinstance(literal,str) or not literal.strip() or literal not in src['text']:
                 continue
+            # Keep raw transcripts in their run, but never promote known ASR
+            # boilerplate to a finding or a report heading.
+            if is_artifact(literal):
+                continue
             row={'code':tag,'literal':literal,'origin':src.get('origin'),'date':src.get('sent_at') or run.get('source_date'),
                  'evidence_id':run['evidence_id']}
             anchor=sources.get(claim.get('anchor_source'),{})
@@ -89,11 +92,10 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
             valid_anchor=anchor_text if isinstance(anchor_text,str) and anchor_text in anchor.get('text','') else None
             # The same source may include several clues. Never choose one arbitrarily.
             local=location_values(literal) if tag=='U' else []
-            if tag=='U' and not local:
-                if SUBTITLE_CREDIT.fullmatch(folded(literal).strip()):
-                    continue
-                # Qwen can identify verbal directions outside the static catalog.
-                local=[(literal,'ubicacion_reportada')]
+            # A U classification is evidence that the fragment may mention a
+            # place, not permission to use the whole quote as a location title.
+            # Unresolved fragments stay under "Ubicación sin identificar" and
+            # remain available as literal evidence inside that report.
             if tag!='U':
                 local=location_values(valid_anchor or src['text']) or location_values(run.get('source_anchor') or '')
             for place,status in local:
@@ -104,6 +106,8 @@ def compose(runs, message_evidence=None, *, excluded_messages=()):
             claims.append((row,[place for place,_ in local],(run['job_id'],src.get('episode',0)),message_ids))
         # A processed location-only message can be useful even if Qwen returned no U.
         for src in sources.values():
+            if is_artifact(src['text']):
+                continue
             local=location_values(src['text'])
             for place,status in local:
                 places.setdefault(place,status)
