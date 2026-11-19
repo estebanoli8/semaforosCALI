@@ -13,6 +13,8 @@ bajo **Ubicación sin identificar** y nunca se usa completo como título. Los re
 el piloto, como Guadalupe, Puertas del Sol, Comuna 14, el Coliseo María Isabel Urrutia y el barrio
 Atanasio Girardot, se registran como referencias reportadas. Esto no les asigna coordenadas ni los
 convierte automáticamente en pines validados.
+La construcción local `Quinta con 5` se proyecta como `Calle 5 con Carrera 5`, con estado
+`por_confirmar`; la fuente literal sigue siendo la autoridad para la revisión humana.
 
 ## Navegar el detalle y exportar el PDF
 
