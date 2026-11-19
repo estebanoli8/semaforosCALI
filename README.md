@@ -6,6 +6,8 @@ El detalle por conversación separa la cita ciudadana completa del título geogr
 vías, GPS y referentes reconocibles se proyectan como encabezados. Una clasificación de ubicación
 sin un lugar aislable queda bajo `Ubicación sin identificar`, mientras la cita completa permanece
 disponible en la evidencia trazable.
+La forma caleña `Quinta con 5` se normaliza de manera explícita como
+`Calle 5 con Carrera 5`; la regla conserva el fragmento literal y marca el cruce por confirmar.
 
 Las transcripciones conservan siempre el texto literal de Whisper. Frases de cierre conocidas que
 pueden aparecer por alucinación del ASR, como créditos de Amara.org o `Suscríbete`, se registran en
