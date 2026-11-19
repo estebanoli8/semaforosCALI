@@ -9,7 +9,29 @@ from .cali import locations
 
 SPATIAL = re.compile(r'\b(?:frente|cerca|lado|llegando|pasando|al frente|esquina|cruce|calle|carrera|cra|kr|cll|sem[aá]foro)\b', re.I)
 PAIR = re.compile(r'(?<![\w\d-])(\d{1,3})\s*(?:con|[x×])\s*(\d{1,3})(?![\w\d-])', re.I)
+WORD_PAIR = re.compile(
+    r'(?<!\w)(?:la\s+)?(primera|cuarta|quinta|sexta|septima|octava|novena|decima)'
+    r'\s+(?:con|[x×])\s+(\d{1,3})(?![\w\d-])', re.I)
+WORD_NUMBERS = {
+    'primera': 1, 'cuarta': 4, 'quinta': 5, 'sexta': 6,
+    'septima': 7, 'octava': 8, 'novena': 9, 'decima': 10,
+}
 AMBIGUOUS = {'cvc', 'la cvc', 'la estacion', 'imbanaco', 'la santiago', 'uao', 'el pascual', 'huv'}
+
+# References observed in the citizen pilot.  They remain reported references,
+# not geocoded points, until a human or a future gazetteer resolves them.
+PILOT_REFERENCES = (
+    ('Guadalupe', r'guadalupe'),
+    ('Puertas del Sol, sector 1', r'puertas del sol\s*,?\s*sector\s*1'),
+    ('Puertas del Sol', r'puertas del sol'),
+    ('Organización Tercer Milenio', r'organizacion tercer milenio'),
+    ('Coliseo María Isabel Urrutia', r'coliseo(?: de)? maria isabel urrutia'),
+    ('barrio Atanasio Girardot, comuna 8', r'(?:barrio )?atanasio girardot\s*,?\s*comuna\s*8'),
+    ('barrio Atanasio Girardot', r'(?:barrio )?atanasio girardot'),
+    ('Comuna 14', r'comuna\s*14'),
+    ('Manuela Carvajal', r'manuela carvajal'),
+    ('La Casona', r'la casona'),
+)
 
 
 def fold(text):
@@ -41,6 +63,22 @@ def hints(text):
             places.setdefault(name,{'label':name,'status':'referencia_no_confirmada' if status=='alias_por_confirmar'
                                     else 'referencia','literal':text[match.start():match.end()]})
     results=list(places.values())
+    occupied=[]
+    for item in results:
+        literal=fold(item['literal'])
+        start=normalized.find(literal)
+        if start>=0:
+            occupied.append((start,start+len(literal)))
+    for name,pattern in PILOT_REFERENCES:
+        match=re.search(r'(?<!\w)'+pattern+r'(?!\w)',normalized)
+        if match and not any(match.start()<end and match.end()>start for start,end in occupied):
+            results.append({'label':name,'status':'referencia_reportada',
+                            'literal':text[match.start():match.end()]})
+            occupied.append(match.span())
+    for pair in WORD_PAIR.finditer(normalized):
+        street,road=pair.groups()
+        results.append({'label':f'Calle {WORD_NUMBERS[street]} con Carrera {road}',
+                        'status':'por_confirmar','literal':text[pair.start():pair.end()]})
     for pair in PAIR.finditer(text):
         a,b=pair.groups()
         # Bare pairs carry a candidate, including the local reading of 5 x 5.

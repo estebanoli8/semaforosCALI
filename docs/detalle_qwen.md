@@ -6,6 +6,16 @@ La vista privada `/reportes` usa como encabezado el nombre o número del ZIP. La
 
 La descripción se compone con afirmaciones de Qwen y referencias locales de fuentes ya procesadas. Se comprueba que cada frase se encuentre literalmente en la fuente. La interfaz distingue el tipo de falla, **desde cuándo lleva dañado** y la reincidencia tras reparación. Gestión registra guarda o agente, incluida la ausencia explícita. Peligro registra accidentes o riesgos y a quiénes afectan cuando se menciona. Las ubicaciones aproximadas se conservan como tales, y una ubicación sola marca el daño como inferido. El detalle muestra una sola vez cada texto encontrado, en el orden Daño, Gestión, Peligro y Ubicación. Oculta los encabezados de campo y las partes sin hallazgos. Cada texto incluye la fuente en letra pequeña y, para la duración, la fecha del mensaje cuando consta. El estado general distingue el análisis en curso del parcial. La inferencia de daño por ubicación sola espera al cierre. La fecha que acompaña la duración corresponde al mensaje que la declara, sin convertir el intervalo de la conversación en tiempo de falla.
 
+El encabezado geográfico y la cita ciudadana son campos distintos. Un encabezado solo se crea a
+partir de un cruce, una vía, coordenadas GPS o un referente aislable. Si Qwen clasifica un fragmento
+como ubicación pero las reglas no pueden extraer el lugar, el fragmento se conserva como evidencia
+bajo **Ubicación sin identificar** y nunca se usa completo como título. Los referentes observados en
+el piloto, como Guadalupe, Puertas del Sol, Comuna 14, el Coliseo María Isabel Urrutia y el barrio
+Atanasio Girardot, se registran como referencias reportadas. Esto no les asigna coordenadas ni los
+convierte automáticamente en pines validados.
+La construcción local `Quinta con 5` se proyecta como `Calle 5 con Carrera 5`, con estado
+`por_confirmar`; la fuente literal sigue siendo la autoridad para la revisión humana.
+
 ## Navegar el detalle y exportar el PDF
 
 1. Abre **Detalle de reporte**. La lista inicial contiene todos los nombres o números en paneles cerrados.
@@ -25,6 +35,14 @@ En cada foto o fotograma, YOLO se evalúa con conteos. En audios y audio de vide
 ## Inferencia compacta
 
 `compact-v1` elimina avisos reconocidos, cabeceras y marcadores técnicos del prompt conservando los tramos y sus posiciones originales. En una solicitud puede empacar más de un episodio y marca cambios de remitente o distancia temporal superior a 30 minutos. Qwen recibe referencias cortas a frases y el subconjunto pertinente del [catálogo de Cali](../semaforos/assets/referentes-cali-v0.1.csv). Una ubicación de otro episodio de la misma solicitud no se usa como ancla. El adaptador recupera las citas desde los tramos y conserva métricas por llamada, también cuando Ollama termina con truncamiento. El texto de chat solicita seis hilos a Ollama. La inferencia de transcripciones conserva cuatro hilos. La cuota efectiva la define el contenedor Ollama.
+
+Whisper conserva la transcripción literal completa. Los segmentos que coinciden con artefactos de
+salida conocidos, incluidos créditos de subtítulos de Amara.org y cierres aislados como
+`Suscríbete`, se guardan en `asr_artifacts` y se excluyen de `analysis_text`. Por ello no generan una
+tarea de Qwen ni un hallazgo del reporte. El filtro también se aplica al componer resultados
+históricos para que esos textos no reaparezcan como ubicaciones. La cuarentena no borra ni modifica
+el audio, el video o la transcripción original y debe comprobarse escuchando la evidencia cuando se
+evalúe Whisper.
 
 El **15 de noviembre de 2026**, el análisis local de **22 TXT únicos** produjo 20 lotes compactos frente a 25 históricos, y 4.977 frente a 19.207 caracteres de cuerpo enviado. Esta comparación excluye prompt fijo, esquema y etiquetas y mide agrupación antes de llamar al modelo. El tiempo de inferencia, tokens reales y exactitud solo se establecen con el piloto en el VPS.
 
@@ -61,7 +79,7 @@ Despliega el código en Easypanel con `SC_PROCESS=all` en `semaforos-core` si el
 
 El reproceso identificado se puede preparar con los trabajadores activos. El comando prepara tareas de Qwen con el perfil `compact-v1` a partir de los chats ya importados y las transcripciones disponibles de audio de WhatsApp y de video. Reutiliza las correcciones humanas y la evidencia visual ya generada. Al aplicar, `queued_conversations` y `batch_jobs` cuentan conversaciones con tareas y tareas preparadas, respectivamente. Volver a pasar el mismo nombre reutiliza tareas con los mismos insumos y configuración. Las conversaciones que siguen en recepción o importación quedan elegibles al terminar su ingreso. Una fuente sin transcripción disponible solo aporta cuando exista esa transcripción.
 
-En **Desempeño de modelos**, filtra el identificador del lote para revisar las ejecuciones de Qwen. Abre `/reportes?experimento=detalle-qwen-arquitectura-20261116` para ver y descargar los hallazgos de daño, gestión, peligro y ubicación de ese lote. El filtro se mantiene al abrir evidencias privadas. Los trabajos pendientes, fallidos y las conversaciones sin tareas se pueden distinguir del análisis completado. La síntesis ignora la línea de crédito de subtítulos de Amara.org cuando el modelo la clasifica como ubicación. Las evaluaciones de la nueva ejecución se vinculan a sus propias salidas.
+En **Desempeño de modelos**, filtra el identificador del lote para revisar las ejecuciones de Qwen. Abre `/reportes?experimento=detalle-qwen-arquitectura-20261116` para ver y descargar los hallazgos de daño, gestión, peligro y ubicación de ese lote. El filtro se mantiene al abrir evidencias privadas. Los trabajos pendientes, fallidos y las conversaciones sin tareas se pueden distinguir del análisis completado. La síntesis omite de los hallazgos los artefactos ASR en cuarentena, pero el visor conserva la transcripción literal para auditoría. Las evaluaciones de la nueva ejecución se vinculan a sus propias salidas.
 
 ## Piloto de cinco conversaciones
 

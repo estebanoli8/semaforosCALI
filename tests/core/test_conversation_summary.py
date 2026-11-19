@@ -75,3 +75,26 @@ class ConversationSummaryTests(unittest.TestCase):
         self.assertEqual(result['text'], noise.text + clear.text)
         self.assertEqual(result['analysis_parts'], [{'text':clear.text,'offset':len(noise.text)}])
         self.assertFalse(model.transcribe.call_args.kwargs['vad_filter'])
+
+    def test_audio_keeps_but_quarantines_known_whisper_outro(self):
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from semaforos.adapters.audio import transcribe
+
+        info=SimpleNamespace(duration=8,language='es',language_probability=1)
+        artifact=SimpleNamespace(start=0,end=2,text=' Subtítulos por la comunidad de Amara.org',
+                                 avg_logprob=-.2,no_speech_prob=.01,compression_ratio=1)
+        speech=SimpleNamespace(start=3,end=7,text=' Semáforo dañado en Guadalupe.',
+                               avg_logprob=-.2,no_speech_prob=.01,compression_ratio=1)
+        model=Mock();model.transcribe.return_value=(iter([artifact,speech]),info)
+        modules={'huggingface_hub':SimpleNamespace(snapshot_download=Mock(return_value='/models/hf/revision')),
+                 'faster_whisper':SimpleNamespace(WhisperModel=Mock(return_value=model))}
+        with patch.dict(sys.modules,modules):
+            result,_=transcribe('audio.wav',{'repository':'synthetic','revision':'main',
+                'compute_type':'int8','cpu_threads':2,'beam_size':5,'vad_filter':True},'/models')
+        self.assertEqual(result['text'],artifact.text+speech.text)
+        self.assertEqual(result['analysis_text'],speech.text)
+        self.assertEqual(result['analysis_parts'],[{'text':speech.text,'offset':len(artifact.text)}])
+        self.assertEqual(result['asr_artifacts'][0]['reason'],'subtitle_credit_amara')
+        self.assertTrue(result['needs_review'])
