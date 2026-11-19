@@ -9,6 +9,13 @@ from .cali import locations
 
 SPATIAL = re.compile(r'\b(?:frente|cerca|lado|llegando|pasando|al frente|esquina|cruce|calle|carrera|cra|kr|cll|sem[aá]foro)\b', re.I)
 PAIR = re.compile(r'(?<![\w\d-])(\d{1,3})\s*(?:con|[x×])\s*(\d{1,3})(?![\w\d-])', re.I)
+WORD_PAIR = re.compile(
+    r'(?<!\w)(?:la\s+)?(primera|cuarta|quinta|sexta|septima|octava|novena|decima)'
+    r'\s+(?:con|[x×])\s+(\d{1,3})(?![\w\d-])', re.I)
+WORD_NUMBERS = {
+    'primera': 1, 'cuarta': 4, 'quinta': 5, 'sexta': 6,
+    'septima': 7, 'octava': 8, 'novena': 9, 'decima': 10,
+}
 AMBIGUOUS = {'cvc', 'la cvc', 'la estacion', 'imbanaco', 'la santiago', 'uao', 'el pascual', 'huv'}
 
 # References observed in the citizen pilot.  They remain reported references,
@@ -68,6 +75,10 @@ def hints(text):
             results.append({'label':name,'status':'referencia_reportada',
                             'literal':text[match.start():match.end()]})
             occupied.append(match.span())
+    for pair in WORD_PAIR.finditer(normalized):
+        street,road=pair.groups()
+        results.append({'label':f'Calle {WORD_NUMBERS[street]} con Carrera {road}',
+                        'status':'por_confirmar','literal':text[pair.start():pair.end()]})
     for pair in PAIR.finditer(text):
         a,b=pair.groups()
         # Bare pairs carry a candidate, including the local reading of 5 x 5.
