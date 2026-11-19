@@ -1,6 +1,8 @@
 from pathlib import Path
 from statistics import mean
 
+from ..asr_artifacts import artifact_reason
+
 TRANSCRIPTION_PROMPT = (
     "Transcripción literal en español colombiano. Vocabulario posible: semáforo, "
     "intersección, calle, carrera, avenida, cruce, agente de tránsito. "
@@ -28,6 +30,7 @@ def decode(model, path, options, on_progress, phase):
 
 def usable_segments(rows):
     return [row for row in rows if row['text'].strip()
+            and artifact_reason(row['text']) is None
             and row['compression_ratio'] < 2.4
             and (row['avg_logprob'] >= -1.25 or row['no_speech_prob'] < 0.5)]
 
@@ -74,8 +77,13 @@ def transcribe(path, config, models_dir, on_progress=None):
     usable = usable_segments(rows)
     needs_review = not usable or len(usable) != len(rows) or score(rows) < -0.85 or second_pass_failed
     parts = []
+    artifacts = []
     offset = 0
     for row in rows:
+        reason=artifact_reason(row['text'])
+        if reason:
+            artifacts.append({'text':row['text'],'offset':offset,'start':row['start'],
+                              'end':row['end'],'reason':reason})
         if row in usable:
             if parts and parts[-1]['offset'] + len(parts[-1]['text']) == offset:
                 parts[-1]['text'] += row['text']
@@ -87,7 +95,8 @@ def transcribe(path, config, models_dir, on_progress=None):
               'segments': rows, 'language': info.language, 'language_probability': info.language_probability,
               'duration': info.duration, 'needs_review': needs_review,
               'status': 'sin_voz_clara' if not usable else 'revisar' if needs_review else 'transcrito',
-              'alternate_pass_used': alternate_used, 'alternate_pass_failed': second_pass_failed}
+              'alternate_pass_used': alternate_used, 'alternate_pass_failed': second_pass_failed,
+              'asr_artifacts': artifacts}
     identity = {'provider': 'faster_whisper_local', 'repository': config['repository'],
                 'revision': Path(snapshot).name, 'compute_type': config['compute_type'],
                 'profile': 'es-co-audio-v2'}
