@@ -349,12 +349,13 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(all(ep['evidence_counts']=={'image':1,'chat':1} for ep in row['episodes']))
         with TestClient(self.client.app,base_url='https://testserver') as browser:
             base='/report-media/conversations/'+cid
-            query={'episodio':row['episodes'][0]['id']}
+            first_episode=next(ep for ep in row['episodes'] if ep['location']=='Calle 5 con Carrera 5')
+            query={'episodio':first_episode['id']}
             self.assertEqual(browser.get(base,params=query).status_code,401)
             browser.post('/report-media/session',headers=self.auth)
             first=browser.get(base,params=query).json()
             self.assertEqual(first['scope'],'registro')
-            self.assertEqual(first['intersection'],row['episodes'][0]['location'])
+            self.assertEqual(first['intersection'],first_episode['location'])
             self.assertEqual({file['name'] for file in first['items']},{'_chat.txt','foto-primera.jpg'})
             self.assertEqual({file['name'] for file in browser.get(base).json()['items']},
                              {'_chat.txt','foto-primera.jpg','foto-segunda.jpg','sin-vinculo.jpg'})
