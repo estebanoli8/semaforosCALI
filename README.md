@@ -1,5 +1,17 @@
 # Semáforos Cali
 
+## Proyección conservadora de ubicaciones y control de artefactos ASR
+
+El detalle por conversación separa la cita ciudadana completa del título geográfico. Solo cruces,
+vías, GPS y referentes reconocibles se proyectan como encabezados. Una clasificación de ubicación
+sin un lugar aislable queda bajo `Ubicación sin identificar`, mientras la cita completa permanece
+disponible en la evidencia trazable.
+
+Las transcripciones conservan siempre el texto literal de Whisper. Frases de cierre conocidas que
+pueden aparecer por alucinación del ASR, como créditos de Amara.org o `Suscríbete`, se registran en
+`asr_artifacts` y se excluyen de `analysis_text`, de las entradas de Qwen y de los títulos del reporte.
+Esta cuarentena no modifica ni elimina el audio ni la transcripción original.
+
 Sistema de IA multimodal para organizar y revisar evidencia ciudadana sobre fallas de semáforos en Cali. Proyecto de Esteban Oliveros Montoya para la Maestría en Inteligencia Artificial Aplicada de la Universidad Icesi.
 
 ## Estado del proyecto
