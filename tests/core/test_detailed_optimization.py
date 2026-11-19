@@ -2,12 +2,16 @@ import unittest
 from unittest.mock import patch
 
 from semaforos.adapters.compact_text import extract_compact
-from semaforos.detailed import compose
+from semaforos.detailed import compose, location_values
 from semaforos.quality_metrics import summarize_reviews
 from semaforos.whatsapp import compact_sources, format_health, parse_chat
 
 
 class DetailedOptimizationTests(unittest.TestCase):
+    def test_cali_ordinal_pair_is_kept_as_a_short_location(self):
+        self.assertEqual(location_values('Quinta con 5, apagado'),
+                         [('Calle 5 con Carrera 5','por_confirmar')])
+
     def test_alerts_preserve_unknown_header_with_no_inherited_sender(self):
         text='[15/11/26, 10:00] Equipo: Hola\n15/11/26 10.05 | Persona | Falla desde ayer\nContinuación.'
         parsed=parse_chat(text)
