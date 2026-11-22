@@ -1,5 +1,19 @@
 # Semáforos Cali
 
+## Indicadores ampliados de evaluación humana (21 de noviembre de 2026)
+
+La pestaña privada **Desempeño de los modelos** aprovecha las evaluaciones manuales ya guardadas
+sin confundirlas con una validación experimental independiente. Para Qwen3 4B Instruct y Whisper
+Small presenta matrices de confusión por `daño`, `gestión`, `peligro` y `ubicación`, además de
+precisión, exhaustividad, especificidad, exactitud, F1 micro y macro, coincidencia completa y
+falsos positivos/negativos. Para YOLO11n presenta coincidencia exacta del conteo, tolerancia de
+una unidad, MAE, RMSE, sesgo, sobreconteos y subconteos.
+
+Cada bloque informa el tamaño efectivo de la muestra y clasifica la lectura como inicial,
+exploratoria o acumulada. Las cifras corresponden a la última evaluación guardada de cada
+ejecución y deben interpretarse según la composición de los casos revisados. La metodología y las
+definiciones están documentadas en [docs/experimentos.md](docs/experimentos.md).
+
 ## Proyección conservadora de ubicaciones y control de artefactos ASR
 
 El detalle por conversación separa la cita ciudadana completa del título geográfico. Solo cruces,

@@ -1,5 +1,24 @@
 # Experimentos y resultados visibles
 
+## Evaluación humana acumulada en el portal (21 de noviembre de 2026)
+
+El tablero privado calcula indicadores únicamente a partir de la última etiqueta manual guardada
+por ejecución. El filtro por experimento y periodo también se aplica a estas evaluaciones. Este
+conjunto es una muestra operacional acumulada, no una partición de prueba aleatoria; por ello el
+portal siempre muestra `n` y advierte cuando hay menos de 30 evaluaciones.
+
+Para Qwen y Whisper, cada variable (`daño`, `gestión`, `peligro`, `ubicación`) se trata como una
+decisión binaria observado/detectado. Se reportan TP, FP, FN y TN, precisión, exhaustividad,
+especificidad, exactitud y F1. El F1 micro agrega todas las decisiones; el F1 macro promedia los
+campos con positivos observados o detectados. La coincidencia completa exige que todos los campos
+calificados de una evaluación coincidan. En Whisper estas métricas semánticas complementan, pero
+no reemplazan, el WER calculado cuando existe una transcripción humana corregida.
+
+Para YOLO las etiquetas disponibles son conteos observados y detectados. Se reportan coincidencia
+exacta, proporción con error máximo de una unidad, MAE, RMSE, sesgo medio, sobreconteos,
+subconteos y error absoluto relativo. No se presenta precisión IoU a partir de estos conteos porque
+ello exigiría cajas de referencia dibujadas manualmente y emparejadas con las predicciones.
+
 El objetivo es cambiar una variable, observar su efecto y poder volver al resultado anterior. Las 36 conversaciones son exploratorias; reservar nuevos datos sin duplicados para evaluación.
 
 ## Registro por ejecución
