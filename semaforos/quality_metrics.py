@@ -1,35 +1,86 @@
 """Latest saved human evaluations and per-call instrumentation for the text cohort."""
 from collections import Counter
+from math import sqrt
 from .text_fields import FIELDS
+
+
+def _ratio(numerator, denominator):
+    return numerator / denominator if denominator else None
+
+
+def _binary_metrics(field):
+    """Return interpretable metrics without inventing values for empty denominators."""
+    tp,fp,fn,tn=(field[key] for key in ('tp','fp','fn','tn'))
+    field['observed_positive']=tp+fn
+    field['detected_positive']=tp+fp
+    field['precision']=_ratio(tp,tp+fp)
+    field['recall']=_ratio(tp,tp+fn)
+    field['specificity']=_ratio(tn,tn+fp)
+    field['accuracy']=_ratio(tp+tn,field['samples'])
+    field['f1']=_ratio(2*tp,2*tp+fp+fn)
+    rates=[value for value in (field['recall'],field['specificity']) if value is not None]
+    field['balanced_accuracy']=sum(rates)/len(rates) if len(rates)==2 else None
+    return field
 
 
 def summarize_reviews(rows):
     counts={stage:{key:Counter(samples=0,tp=0,fp=0,fn=0,tn=0) for key in FIELDS}
             for stage in ('audio','text')}
-    photos=Counter(samples=0,exact=0,observed=0,detected=0,abs_error=0)
+    semantic={stage:Counter(evaluations=0,fields_evaluated=0,correct_labels=0,
+                            exact_evaluations=0) for stage in ('audio','text')}
+    photos=Counter(samples=0,exact=0,within_one=0,over=0,under=0,
+                   observed=0,detected=0,abs_error=0,squared_error=0,bias_sum=0)
     for row in rows:
         stage,label=row['stage'],row['human_label']
         if stage=='detect':
             seen,found=label['observed'],label['detected']
-            photos.update(samples=1, exact=int(seen==found), observed=seen,detected=found,abs_error=abs(seen-found))
+            error=found-seen
+            photos.update(samples=1,exact=int(error==0),within_one=int(abs(error)<=1),
+                          over=int(error>0),under=int(error<0),observed=seen,detected=found,
+                          abs_error=abs(error),squared_error=error**2,bias_sum=error)
             continue
+        comparisons=[]
         for key,pair in label.items():
             if key not in FIELDS:
                 continue
             observed,detected=pair['observed'],pair['detected']
             kind='tp' if observed and detected else 'fn' if observed else 'fp' if detected else 'tn'
             counts[stage][key].update([kind,'samples'])
+            comparisons.append(observed==detected)
+        if comparisons:
+            semantic[stage].update(evaluations=1,fields_evaluated=len(comparisons),
+                                   correct_labels=sum(comparisons),
+                                   exact_evaluations=int(all(comparisons)))
     result={}
     for stage,fields in counts.items():
-        eligible=[]
         for field in fields.values():
-            denominator=2*field['tp']+field['fp']+field['fn']
-            field['f1']=2*field['tp']/denominator if denominator else None
-            if denominator:
-                eligible.append(field['f1'])
-        result[stage]={'fields':fields,'macro_f1':sum(eligible)/len(eligible) if eligible else None,
-                       'fields_with_f1':len(eligible)}
-    result['detect']={**photos,'exact_rate':photos['exact']/photos['samples'] if photos['samples'] else None}
+            _binary_metrics(field)
+        eligible=[field['f1'] for field in fields.values() if field['f1'] is not None]
+        totals=Counter()
+        for field in fields.values():
+            totals.update({key:field[key] for key in ('samples','tp','fp','fn','tn')})
+        _binary_metrics(totals)
+        summary=semantic[stage]
+        result[stage]={
+            'fields':fields,
+            'evaluations':summary['evaluations'],
+            'fields_evaluated':summary['fields_evaluated'],
+            'exact_evaluations':summary['exact_evaluations'],
+            'exact_match_rate':_ratio(summary['exact_evaluations'],summary['evaluations']),
+            'label_accuracy':_ratio(summary['correct_labels'],summary['fields_evaluated']),
+            'macro_f1':sum(eligible)/len(eligible) if eligible else None,
+            'fields_with_f1':len(eligible),
+            'micro':totals,
+        }
+    result['detect']={
+        **photos,
+        'exact_rate':_ratio(photos['exact'],photos['samples']),
+        'within_one_rate':_ratio(photos['within_one'],photos['samples']),
+        'mae':_ratio(photos['abs_error'],photos['samples']),
+        'rmse':sqrt(photos['squared_error']/photos['samples']) if photos['samples'] else None,
+        'mean_bias':_ratio(photos['bias_sum'],photos['samples']),
+        'relative_abs_error':_ratio(photos['abs_error'],photos['observed']),
+    }
     return result
 
 
