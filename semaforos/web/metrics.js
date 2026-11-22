@@ -84,7 +84,7 @@ function quality(stage, data) {
   if (stage === 'video') return block;
   block.append(element('h3', 'Calidad de la salida'));
   if (stage === 'text') {
-    block.append(element('p', 'La validación comprueba que las citas estén en la fuente. Falta una evaluación humana que mida aciertos y omisiones por campo.'));
+    block.append(element('p', 'Las métricas de daño, gestión, peligro y ubicación se calculan con las evaluaciones humanas mostradas más abajo.'));
   } else if (!data.quality_samples) {
     block.append(element('p', 'Aún no hay referencias humanas utilizables en este filtro.'));
   } else if (stage === 'audio') {
@@ -214,28 +214,96 @@ function latencyChart(byStage) {
   }
   return section;
 }
+function evidenceLevel(samples) {
+  if (!samples) return ['Sin muestra','Todavía no hay evaluaciones humanas guardadas para este modelo.','empty'];
+  if (samples < 10) return ['Muestra inicial','Resultado descriptivo; todavía es muy sensible a cada nueva evaluación.','low'];
+  if (samples < 30) return ['Muestra exploratoria','Permite detectar tendencias, pero aún no sustenta conclusiones estables.','medium'];
+  return ['Muestra acumulada','Indicador calculado con 30 o más evaluaciones; debe interpretarse junto con la composición de la muestra.','high'];
+}
+function sampleNotice(samples, unit='evaluaciones') {
+  const [title,description,tone]=evidenceLevel(samples);
+  const notice=element('div');
+  notice.className='metrics-sample metrics-sample-'+tone;
+  notice.append(element('strong',title+' · '+number(samples)+' '+unit),element('span',description));
+  return notice;
+}
+function scoreBar(label, value, description) {
+  const wrap=element('div');
+  wrap.className='metrics-score';
+  const heading=element('div');
+  heading.append(element('span',label),element('strong',percent(value)));
+  const meter=element('meter');
+  meter.min=0;meter.max=1;meter.value=Number.isFinite(value)?value:0;
+  meter.setAttribute('aria-label',label+' · '+percent(value));
+  wrap.append(heading,meter,element('small',description));
+  return wrap;
+}
+function semanticModel(model, row, completed) {
+  const section=element('article');
+  section.className='metrics-review-model';
+  section.append(element('h3',model),sampleNotice(row?.evaluations||0));
+  if(!row?.evaluations)return section;
+  const micro=row.micro||{};
+  const scores=element('div');
+  scores.className='metrics-scores';
+  scores.append(
+    scoreBar('F1 macro',row.macro_f1,'Promedio del F1 de los campos que tuvieron positivos observados o detectados.'),
+    scoreBar('F1 micro',micro.f1,'Balance global entre omisiones y detecciones incorrectas en todos los campos.'),
+    scoreBar('Coincidencia completa',row.exact_match_rate,'Proporción de evaluaciones donde todos los campos calificados coincidieron.'),
+    scoreBar('Exactitud de etiquetas',row.label_accuracy,'Proporción de casillas observado/detectado correctamente emparejadas.')
+  );
+  section.append(scores,values([
+    ['Precisión micro',percent(micro.precision)],
+    ['Exhaustividad micro',percent(micro.recall)],
+    ['Especificidad micro',percent(micro.specificity)],
+    ['Cobertura revisada',percent(ratio(row.evaluations,completed))],
+    ['Campos evaluados',number(row.fields_evaluated)],
+    ['Falsos positivos',number(micro.fp)],
+    ['Falsos negativos',number(micro.fn)]
+  ]));
+  const labels={dano:'Daño',gestion:'Gestión',peligro:'Peligro',ubicacion:'Ubicación'};
+  section.append(dataTable(
+    ['Campo','n','TP','FP','FN','TN','Precisión','Exhaustividad','Especificidad','Exactitud','F1'],
+    Object.entries(row.fields).map(([key,value])=>[
+      labels[key],number(value.samples),number(value.tp),number(value.fp),number(value.fn),number(value.tn),
+      percent(value.precision),percent(value.recall),percent(value.specificity),percent(value.accuracy),percent(value.f1)
+    ])
+  ));
+  return section;
+}
 function reviewedModels(data) {
   const panel=element('section');
   panel.className='metrics-section';
-  panel.append(element('h2','Evaluación humana por modelo'));
+  panel.append(element('h2','Resultados de la evaluación humana'),
+    element('p','Estos indicadores usan únicamente la última evaluación guardada por ejecución. No sustituyen una muestra de validación estratificada; muestran el desempeño observado en el trabajo de revisión realizado.'));
   const quality=data.human_evaluations||{};
+  const completed=new Map((data.stages||[]).map(row=>[row.stage,row.completed||0]));
   const vision=quality.detect;
-  if(vision)panel.append(values([
-    ['YOLO · imágenes con conteo exacto',percent(vision.exact_rate)],
-    ['Imágenes evaluadas',number(vision.samples)],
-    ['Semáforos observados',number(vision.observed)],
-    ['Semáforos detectados',number(vision.detected)]
-  ]));
-  const labels={dano:'Daño',gestion:'Gestión',peligro:'Peligro',ubicacion:'Ubicación'};
-  for(const [stage,model] of [['audio','Whisper'],['text','Qwen']]) {
-    const row=quality[stage];
-    if(!row)continue;
-    panel.append(element('h3',model+' · F1 de los campos '+percent(row.macro_f1)));
-    panel.append(dataTable(['Campo','Observados','Detectados','Coincidencias positivas','Evaluaciones','F1'],
-      Object.entries(row.fields).map(([key,value])=>[labels[key],number(value.tp+value.fn),
-        number(value.tp+value.fp),number(value.tp),number(value.samples),percent(value.f1)])));
+  const yolo=element('article');
+  yolo.className='metrics-review-model';
+  yolo.append(element('h3','YOLO11n · conteo de semáforos'),sampleNotice(vision?.samples||0,'imágenes'));
+  if(vision?.samples) {
+    const scores=element('div');scores.className='metrics-scores';
+    scores.append(
+      scoreBar('Conteo exacto',vision.exact_rate,'La cantidad detectada coincide exactamente con la observada por la persona.'),
+      scoreBar('Error máximo de una unidad',vision.within_one_rate,'La diferencia entre observado y detectado es cero o un semáforo.')
+    );
+    yolo.append(scores,values([
+      ['Imágenes evaluadas',number(vision.samples)],
+      ['Cobertura revisada',percent(ratio(vision.samples,completed.get('detect')))],
+      ['Semáforos observados',number(vision.observed)],
+      ['Semáforos detectados',number(vision.detected)],
+      ['MAE · error absoluto medio',number(vision.mae)],
+      ['RMSE',number(vision.rmse)],
+      ['Sesgo medio detectado − observado',number(vision.mean_bias)],
+      ['Sobreconteos',number(vision.over)],
+      ['Subconteos',number(vision.under)],
+      ['Error absoluto relativo',percent(vision.relative_abs_error)]
+    ]),element('small','Para YOLO se evalúa el conteo, no la coincidencia geométrica caja por caja. Por eso no se presenta precisión IoU con estas etiquetas manuales.'));
   }
-  panel.append(element('p','Se cuenta la última etiqueta guardada de cada ejecución. Un campo sin positivos observados ni detectados queda fuera del promedio F1.'));
+  panel.append(yolo,semanticModel('Whisper Small · contenido recuperado del audio',quality.audio,completed.get('audio')),
+    semanticModel('Qwen3 4B Instruct · extracción semántica',quality.text,completed.get('text')));
+  panel.append(element('p','TP: positivo correctamente detectado. FP: detección no observada. FN: elemento observado que el modelo omitió. TN: ausencia correctamente reconocida. Un campo sin positivos observados ni detectados queda fuera del F1 macro.'));
   return panel;
 }
 function extractionTelemetry(data) {
