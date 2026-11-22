@@ -96,6 +96,16 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
         result={stages:[{stage:'audio',models:['Whisper Small'],completed:filtered?1:3,partial:0,
           failed:0,pending:0,running:0,excluded:0,seconds_p50:2.5,seconds_p90:4,time_samples:3,
           quality_samples:1,word_errors:2,reference_words:8}],
+          human_evaluations:{
+            detect:{samples:12,exact_rate:.75,within_one_rate:.92,observed:24,detected:23,mae:.33,rmse:.58,
+              mean_bias:-.08,over:1,under:2,relative_abs_error:.17},
+            audio:{evaluations:8,fields_evaluated:32,exact_match_rate:.5,label_accuracy:.81,macro_f1:.78,
+              micro:{precision:.8,recall:.75,specificity:.9,f1:.77,fp:2,fn:3},
+              fields:{ubicacion:{samples:8,tp:5,fp:1,fn:1,tn:1,precision:.83,recall:.83,specificity:.5,accuracy:.75,f1:.83}}},
+            text:{evaluations:12,fields_evaluated:48,exact_match_rate:.67,label_accuracy:.9,macro_f1:.88,
+              micro:{precision:.9,recall:.86,specificity:.94,f1:.88,fp:2,fn:3},
+              fields:{dano:{samples:12,tp:8,fp:1,fn:1,tn:2,precision:.89,recall:.89,specificity:.67,accuracy:.83,f1:.89}}}
+          },
           as_of:'2026-11-14T10:00:00-05:00',chart_days:['2026-11-13','2026-11-14'],
           daily:[{day:'2026-11-14',stage:'audio',results:1,failed:0}],errors:[],experiments:['test']};
       }
@@ -276,6 +286,9 @@ const server=spawn('python',['-m','http.server','8765','--bind','127.0.0.1','--d
     await page.locator('#metricsToken').press('Enter');
     await page.getByText('WER · tasa de error de palabras').waitFor();
     assert.match(await page.locator('#metricsContent').textContent(),/25 %/);
+    assert.match(await page.locator('#metricsContent').textContent(),/MAE · error absoluto medio/);
+    assert.match(await page.locator('#metricsContent').textContent(),/F1 micro/);
+    assert.match(await page.locator('#metricsContent').textContent(),/Muestra exploratoria/);
     assert.equal(await page.locator('#metricsContent').getByRole('img').count(),2);
     const filtered=page.waitForResponse(resp=>resp.url().includes('/model-metrics?experiment=test'));
     await page.locator('#metricsExperiment').selectOption('test');
