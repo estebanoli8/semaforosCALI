@@ -1,5 +1,10 @@
 # Historial
 
+## 2026-11-23 — Informe final del proyecto
+
+- Se incorpora el PDF final aportado por el autor en `docs/informes/Informe_Final_Semaforos_Cali.pdf` y se enlaza desde el README.
+- Cambio exclusivamente documental; no modifica modelos, configuración ni despliegue del VPS.
+
 ## 2026-11-16 — Informe detallado con enlace a la conversación
 
 - Las filas de la web y el PDF muestran cruce, fecha abreviada y enlace a las evidencias de la conversación.

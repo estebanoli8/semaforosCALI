@@ -1,5 +1,13 @@
 # Semáforos Cali
 
+## Informe final del proyecto
+
+El [informe final del proyecto (PDF)](docs/informes/Informe_Final_Semaforos_Cali.pdf),
+incorporado el **23 de noviembre de 2026**, documenta el problema ciudadano, la arquitectura
+multimodal, el preprocesamiento, la selección de modelos, los resultados y la evaluación humana.
+Corresponde al documento final aportado por Esteban Oliveros Montoya para la Maestría en
+Inteligencia Artificial Aplicada de la Universidad Icesi. Se conserva el PDF recibido sin modificaciones.
+
 ## Indicadores ampliados de evaluación humana (21 de noviembre de 2026)
 
 La pestaña privada **Desempeño de los modelos** aprovecha las evaluaciones manuales ya guardadas
