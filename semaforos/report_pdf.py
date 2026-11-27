@@ -1,8 +1,8 @@
-"""Versioned PDF cuts and expiring evidence links."""
+"""Versioned PDF cuts and signed evidence links without expiration."""
 import hashlib
 import hmac
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from html import escape
 from io import BytesIO
 from pathlib import Path
@@ -22,7 +22,6 @@ from .reports import ReportError
 
 BOGOTA = ZoneInfo('America/Bogota')
 SCHEMA_VERSION = 1
-LINK_DAYS = 7
 MONTHS = 'ENE FEB MAR ABR MAY JUN JUL AGO SEP OCT NOV DIC'.split()
 LOGO = Path(__file__).with_name('assets') / 'logo-esteban.png'
 FONT_DIR = Path(reportlab.__file__).with_name('fonts')
@@ -40,7 +39,9 @@ def export_filename(generated):
 
 
 def signature(key, export_id, evidence_id, expires_at):
-    value = f'report-evidence|{export_id}|{evidence_id}|{int(expires_at.timestamp())}'
+    # Preserve the timestamp in legacy signatures so existing PDFs still work.
+    stamp = int(expires_at.timestamp()) if expires_at is not None else 0
+    value = f'report-evidence|{export_id}|{evidence_id}|{stamp}'
     return hmac.new(key.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
@@ -59,7 +60,8 @@ def report_origin(request):
 
 
 def conversation_signature(key,export_id,conversation_id,expires_at):
-    value=f'report-conversation|{export_id}|{conversation_id}|{int(expires_at.timestamp())}'
+    stamp=int(expires_at.timestamp()) if expires_at is not None else 0
+    value=f'report-conversation|{export_id}|{conversation_id}|{stamp}'
     return hmac.new(key.encode(),value.encode(),hashlib.sha256).hexdigest()
 
 
@@ -70,7 +72,7 @@ def access_conversation(store,export_id,conversation_id,key,provided):
                    x.evidence_expires_at AS expires_at,
                    ARRAY(SELECT jsonb_array_elements_text(version->'evidence_ids')::uuid) AS ids
             FROM report_pdf_exports x CROSS JOIN LATERAL jsonb_array_elements(x.report_versions) version
-            WHERE x.id=%s AND x.evidence_expires_at>now() AND version->>'conversation_id'=%s
+            WHERE x.id=%s AND version->>'conversation_id'=%s
         """,(export_id,str(conversation_id))).fetchone()
     if not row or not hmac.compare_digest(conversation_signature(key,export_id,conversation_id,row['expires_at']),provided):
         raise ReportError('evidence_link_unavailable')
@@ -81,7 +83,7 @@ def access_evidence(store, export_id, evidence_id, key, provided):
         row = c.execute('''
             SELECT e.id,e.storage_path,e.original_name,e.modality,e.sha256,x.evidence_expires_at
             FROM report_pdf_exports x JOIN evidence e ON e.id=ANY(x.evidence_ids)
-            WHERE x.id=%s AND e.id=%s AND x.evidence_expires_at > now()
+            WHERE x.id=%s AND e.id=%s
         ''', (export_id,evidence_id)).fetchone()
     if not row or not hmac.compare_digest(signature(key,export_id,evidence_id,row['evidence_expires_at']),provided):
         raise ReportError('evidence_link_unavailable')
@@ -168,8 +170,8 @@ def render_pdf(data, export_id, generated, link_for=None, expires_at=None):
         story.extend([Spacer(0,13),draw_map(map_data,bool(data['boundary_version']))])
     story.extend([Spacer(0,12),paragraph('Registros y evidencias','subtitle'),
         paragraph('Cada fila conserva el reporte ciudadano y su estado al corte. Los registros descartados se excluyen.','small')])
-    if expires_at:
-        story.append(paragraph('Los enlaces a evidencias vencen el '+formatted_date(expires_at)+'.','small'))
+    if link_for:
+        story.append(paragraph('Enlaces a evidencias sin fecha de caducidad.','small'))
     if not data['items']:
         story.append(paragraph('Aún no hay reportes consolidados para incluir.'))
     for row in data['items']:
@@ -226,8 +228,8 @@ def render_detailed(data, generated, link_for, expires_at):
     story=[paragraph(f'{len(data["items"])} conversaciones · Corte {formatted_date(data["cutoff"])}',small)]
     if data.get('experiment'):
         story.append(paragraph('Lote '+data['experiment'],small))
-    if expires_at:
-        story.append(paragraph('Enlaces de evidencia disponibles hasta '+formatted_date(expires_at),small))
+    if link_for:
+        story.append(paragraph('Enlaces a evidencias sin fecha de caducidad.',small))
     groups={}
     for row in data['items']:
         groups.setdefault(row['reporter_key'],[]).append(row)
@@ -275,7 +277,7 @@ def make_export(store, root, key, include_links, origin=None, *, action_report=F
         data=snapshot(store,root,team=action_report,export=action_report)
     ident=uuid4()
     generated=datetime.now(BOGOTA)
-    expires_at=generated+timedelta(days=LINK_DAYS) if include_links else None
+    expires_at=None
 
     def evidence_url(evidence_id):
         return f'{origin}/informe/evidencia/{ident}/{evidence_id}?firma={signature(key,ident,evidence_id,expires_at)}'

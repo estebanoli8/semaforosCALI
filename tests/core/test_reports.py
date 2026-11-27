@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 import zipfile
 from fastapi.testclient import TestClient
@@ -19,6 +19,26 @@ from semaforos.worker import once
 
 
 class QuoteTests(unittest.TestCase):
+    def test_pdf_links_validate_new_and_legacy_signatures_without_expiry(self):
+        from semaforos.report_pdf import access_conversation, access_evidence, conversation_signature, signature
+        from semaforos.reports import ReportError
+        key='x'*32
+        export_id,ident=uuid4(),uuid4()
+        for stamp in (None,datetime(2020,1,1,tzinfo=timezone.utc)):
+            for access,sign,field in ((access_conversation,conversation_signature,'expires_at'),
+                                      (access_evidence,signature,'evidence_expires_at')):
+                with self.subTest(stamp=stamp,access=access.__name__):
+                    store=MagicMock()
+                    db=store.connect.return_value.__enter__.return_value
+                    db.execute.return_value.fetchone.return_value={field:stamp}
+                    proof=sign(key,export_id,ident,stamp)
+                    self.assertEqual(access(store,export_id,ident,key,proof)[field],stamp)
+                    self.assertNotIn('now()',db.execute.call_args.args[0])
+                    with self.assertRaises(ReportError):access(store,export_id,ident,key,'0'*64)
+                    with self.assertRaises(ReportError):access(store,export_id,uuid4(),key,proof)
+                    db.execute.return_value.fetchone.return_value=None
+                    with self.assertRaises(ReportError):access(store,export_id,ident,key,proof)
+
     def test_clean_quote_changes_only_presentation(self):
         original='Apagado <attached: foto.jpg> desde ayer.'
         self.assertEqual(clean_quote(original),'Apagado  desde ayer.')
@@ -122,14 +142,19 @@ class ReportTests(unittest.TestCase):
                 self.assertEqual(len(stored['report_versions']),2)
                 e=stored['evidence_ids'][0]
                 expires=stored['evidence_expires_at']
+                self.assertIsNone(expires)
             proof=signature('x'*32,export_id,e,expires)
             path=f'/informe/evidencia/{export_id}/{e}'
             self.assertEqual(https.get(path).status_code,404)
             self.assertEqual(https.get(path,params={'firma':proof}).status_code,200)
             self.assertEqual(https.get(f'/informe/evidencia/{export_id}/{uuid4()}',params={'firma':proof}).status_code,404)
+            # Existing PDFs retain their original signed timestamp even after it passes.
+            legacy_date=datetime(2020,1,1,tzinfo=timezone.utc)
             with self.store.connect() as c:
-                c.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(export_id,))
-            self.assertEqual(https.get(path,params={'firma':proof}).status_code,404)
+                c.execute('UPDATE report_pdf_exports SET evidence_expires_at=%s WHERE id=%s',(legacy_date,export_id))
+            legacy_proof=signature('x'*32,export_id,e,legacy_date)
+            self.assertEqual(https.get(path,params={'firma':legacy_proof}).status_code,200)
+            self.assertEqual(https.get(path,params={'firma':'0'*64}).status_code,404)
 
     def test_automatic_public_results_keep_independent_reports_without_leaking_sources(self):
         for index, text in enumerate((
@@ -396,9 +421,15 @@ class ReportTests(unittest.TestCase):
                 chat=next(file for file in items if file['type']=='chat')
                 self.assertIn('Quinta con 5',recipient.get(chat['content']).text)
                 self.assertEqual(recipient.get(chat['download']).status_code,200)
+                from semaforos.report_pdf import conversation_signature
+                legacy_date=datetime(2020,1,1,tzinfo=timezone.utc)
                 with self.store.connect() as db:
-                    db.execute("UPDATE report_pdf_exports SET evidence_expires_at=now()-interval '1 hour' WHERE id=%s",(url[1].decode(),))
-                self.assertEqual(recipient.get(path,params={'firma':proof}).status_code,404)
+                    db.execute('UPDATE report_pdf_exports SET evidence_expires_at=%s WHERE id=%s',(legacy_date,url[1].decode()))
+                legacy_proof=conversation_signature('x'*32,url[1].decode(),cid,legacy_date)
+                legacy=recipient.get(path,params={'firma':legacy_proof})
+                self.assertEqual(legacy.status_code,200)
+                legacy_chat=next(item for item in legacy.json()['items'] if item['type']=='chat')
+                self.assertEqual(recipient.get(legacy_chat['download']).status_code,200)
 
     def test_historical_batch_keeps_previous_extractions_out_of_its_report(self):
         from semaforos.optimize_queue import prepare

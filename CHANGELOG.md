@@ -1,5 +1,12 @@
 # Historial
 
+## 2026-11-27 — Enlaces de evidencia del PDF sin caducidad
+
+- Nuevas exportaciones sin fecha de vencimiento, manteniendo firmas e inventarios autorizados.
+- Compatibilidad con PDF históricos: se valida su firma original sin rechazar por tiempo transcurrido.
+- Pruebas de acceso directo y por conversación, firmas incorrectas y evidencia fuera del corte.
+- Requiere despliegue del núcleo; no modifica datos históricos ni modelos.
+
 ## 2026-11-23 — Informe final del proyecto
 
 - Se incorpora el PDF final aportado por el autor en `docs/informes/Informe_Final_Semaforos_Cali.pdf` y se enlaza desde el README.

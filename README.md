@@ -1,5 +1,15 @@
 # Semáforos Cali
 
+## Evidencias del PDF sin caducidad (27 de noviembre de 2026)
+
+Los nuevos PDF generan enlaces firmados sin fecha de vencimiento. Los enlaces de PDF anteriores,
+incluidos los que ya cumplieron siete días, vuelven a ser consultables después de desplegar esta
+versión. Se conserva la firma y el inventario del corte original. No modificar las fechas históricas
+de `report_pdf_exports`: forman parte de las firmas anteriores. No requiere migración ni reprocesar
+modelos. Véase [acceso a evidencias](docs/mapa_e_informe.md).
+Estado: cambio de código; requiere Deploy de `semaforos-core` en el VPS.
+El acceso depende de conservar la clave de firma, la base de datos, los archivos y el dominio del enlace.
+
 ## Informe final del proyecto
 
 El [informe final del proyecto (PDF)](docs/informes/Informe_Final_Semaforos_Cali.pdf),

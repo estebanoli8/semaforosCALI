@@ -8,7 +8,7 @@
 4. Revisar **Métricas de modelos** (`/metricas`). Comprobar el experimento, los tiempos y los fallos. La calidad aparece al registrar referencias humanas utilizables.
 5. Generar el PDF general. Comprobar sello de generación y corte en Colombia, logo, mapa, reportes por cruce y estados. Cada nueva generación guarda un archivo en `/data/core/informes` y una fila con identificador, versiones incluidas y huella SHA-256 en `semaforos.report_pdf_exports`.
 
-**Enlaces de evidencia.** El equipo puede habilitarlos al generar un PDF. Los enlaces del PDF general abren la evidencia de ese corte y vencen en siete días. El PDF detallado ofrece un enlace a la conversación completa del corte. Compartir el enlace concede acceso de consulta a esos archivos durante ese plazo. Para crear enlaces, el origen debe ser HTTPS. Si Easypanel entrega un origen interno al contenedor, establecer `SC_REPORT_ORIGIN` con el dominio HTTPS de la app, sin ruta ni parámetros. Mantener la clave del equipo en el entorno privado. La consulta pública carece de enlaces y archivos originales.
+**Enlaces de evidencia (27 de noviembre de 2026).** Los enlaces firmados del PDF general y del PDF detallado no caducan. El primero abre los archivos del corte y el segundo la conversación completa de ese corte. Compartir el enlace concede acceso de consulta a ese inventario. Los PDF anteriores mantienen sus firmas originales: después de desplegar esta versión, el transcurso de su antigua fecha de vencimiento ya no bloquea el acceso. No borrar ni modificar `evidence_expires_at` en registros históricos, porque ese valor forma parte de la firma antigua; los nuevos guardan NULL. No se requiere migración. Para crear enlaces, el origen debe ser HTTPS. Si Easypanel entrega un origen interno, establecer `SC_REPORT_ORIGIN` con el dominio HTTPS de la app, sin ruta ni parámetros. Conservar la clave de firma, base de datos, archivos y dominio. La sesión privada del equipo conserva su duración de cuatro horas y no afecta estos enlaces del PDF.
 
 ## Resultados preliminares públicos
 
@@ -36,4 +36,4 @@ La versión del PDF y la web comparten la misma proyección geográfica. Hasta c
 
 ## Prueba reproducible
 
-La prueba PostgreSQL recorre ZIP sintético, extracción simulada, afirmaciones, dos reportes independientes del mismo cruce, publicación depurada, métricas, corte PDF e integridad y expiración de enlaces. La prueba Chromium recorre navegación, ubicación, descarga y vista pública. Validar por separado en el VPS con una conversación elegida por el equipo y su configuración real.
+La prueba PostgreSQL recorre ZIP sintético, extracción simulada, afirmaciones, dos reportes independientes del mismo cruce, publicación depurada, métricas, corte PDF e integridad de enlaces nuevos e históricos sin caducidad. La prueba Chromium recorre navegación, ubicación, descarga y vista pública. Validar por separado en el VPS con una conversación elegida por el equipo y su configuración real.
